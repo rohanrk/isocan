@@ -1,7 +1,7 @@
 import { selectCreatedItems } from "./groupplacement.ts";
 import type { Actor, CanvasCursor, CanvasTheme, Item, ModuleMark, ThemeAnchor } from "@isocan/core";
 import { markOffered, moduleMarkIntent, moduleMarkPatch, moduleMarks } from "@isocan/core";
-import { canvasScopes, isDesignSystem, parentOf } from "@isocan/core";
+import { canvasScopes, isDesignSystem, isMarkupTarget, parentOf } from "@isocan/core";
 import { isDesignFile } from "@isocan/core/design-use";
 import { CURSORS, cursorLabel, contextMark, isGroupItem, isNote, isSlide, itemPath, markPatch, newGroupId, noteFor, THEMES, themeLabel, ALIGN_EDGES, alignLabel, slideIntent, slidePatch, workbenchItemPath, keyFor, SLIDE_EMOJI, sprintState } from "@isocan/core";
 import type { ReactNode } from "react";
@@ -181,6 +181,12 @@ export function itemMenu(items: Item[], ctx: MenuContext): MenuEntry[] {
       disabled: !one,
       run: () => one && ctx.navigate(itemPath(ctx.canvasId, one.id)),
     }] : []),
+    {
+      label: "Mark up",
+      writes: true,
+      disabled: !one || !isMarkupTarget(one),
+      run: () => one && void import("../components/MarkupModal.tsx").then((m) => m.openMarkup({ canvasId: ctx.canvasId, actor: ctx.actor, itemId: one.id })),
+    },
     {
       label: "Open in the workbench",
       disabled: !one,

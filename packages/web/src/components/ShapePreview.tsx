@@ -1,5 +1,5 @@
-import type { ShapeDrag } from "@isocan/core";
-import { shapeBounds } from "@isocan/core";
+import type { Mark, ShapeDrag } from "@isocan/core";
+import { inkPath, shapeBounds } from "@isocan/core";
 import { useUiStore } from "../stores/uiStore.ts";
 
 /**
@@ -35,7 +35,25 @@ export function ShapePreview() {
   );
 }
 
-function ShapeElement({
+/** Any mark as SVG JSX — the live form of what `markupSvg` writes. */
+export function MarkElement({ mark }: { mark: Mark }) {
+  if (mark.kind === "stroke") {
+    if (mark.stroke.points.length === 0) return null;
+    return (
+      <path
+        d={inkPath(mark.stroke.points)}
+        fill="none"
+        stroke={mark.stroke.color}
+        strokeWidth={mark.stroke.width}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    );
+  }
+  return <ShapeElement shape={mark.shape} drag={mark.drag} color={mark.color} strokeWidth={mark.width} />;
+}
+
+export function ShapeElement({
   shape,
   drag,
   color,

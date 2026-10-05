@@ -5,6 +5,7 @@ import { Markdown } from "../lib/markdown.tsx";
 const DesignComment = lazy(() => import("./DesignComment.tsx").then((module) => ({ default: module.DesignComment })));
 const DesignComparisonComment = lazy(() => import("./DesignComparisonComment.tsx").then((module) => ({ default: module.DesignComparisonComment })));
 import type { Actor, CommentThread, NewComment } from "@isocan/core";
+import { isMarkupTarget } from "@isocan/core";
 import {
   collectItemRefCandidates,
   extractItemRefs,
@@ -595,6 +596,33 @@ export function ComposePopover({
           >
             Cancel
           </button>
+          {/* A markup made FOR this comment: draw on the anchored screen and
+              the one drawing that lands is attached here, not sent as a
+              comment of its own. The draft survives the trip — the composer's
+              key ignores `aboutItemId`, so this is the same instance after. */}
+          {pending.anchorItemId && canvas?.items[pending.anchorItemId] && isMarkupTarget(canvas.items[pending.anchorItemId]!) && (
+            <button
+              type="button"
+              className="btn"
+              title="Draw on the screen; the markup is attached to this comment"
+              onClick={() => {
+                const itemId = pending.anchorItemId!;
+                void import("./MarkupModal.tsx").then((m) =>
+                  m.openMarkup({
+                    canvasId,
+                    actor,
+                    itemId,
+                    onDone: (drawingId) => {
+                      const ui = useUiStore.getState();
+                      if (ui.pendingComment?.anchorItemId === itemId) ui.setPendingComment({ ...ui.pendingComment, aboutItemId: drawingId });
+                    },
+                  }),
+                );
+              }}
+            >
+              {pending.aboutItemId ? "Mark up again" : "Mark up"}
+            </button>
+          )}
           <button className="btn primary" type="submit" title={`Comment (${shortcut("⏎")})`} disabled={!body.trim() || sending.disabled}>
             Comment
           </button>

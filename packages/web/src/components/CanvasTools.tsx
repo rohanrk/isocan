@@ -399,7 +399,7 @@ export function CanvasTools({ canvasId, actor }: { canvasId: string; actor: Acto
 // Shape sub-mode picker — the row of shapes below the ink color well.
 // ---------------------------------------------------------------------------
 
-const SHAPE_ICONS: Record<string, ReactNode> = {
+export const SHAPE_ICONS: Record<string, ReactNode> = {
   freehand: (
     <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 12c1-3 3-8 5-8s2 5 5 2" />

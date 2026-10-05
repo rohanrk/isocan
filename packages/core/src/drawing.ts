@@ -244,22 +244,33 @@ function safeColor(color: string): string {
   return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(color) ? color : INK_FALLBACK_COLOR;
 }
 
-/** The blob: strokes as an SVG whose viewBox is `bounds` in world space. */
-export function drawingSvg(strokes: InkStroke[], bounds: InkBounds): string {
+/** One stroke as a `<path>` — the element `inkFromSvg` reads back. */
+function strokeBody(stroke: InkStroke): string {
+  return (
+    `  <path d="${inkPath(stroke.points)}" fill="none" stroke="${safeColor(stroke.color)}"` +
+    ` stroke-width="${r(stroke.width)}" stroke-linecap="round" stroke-linejoin="round"/>`
+  );
+}
+
+/** The document around a body: the viewBox IS `bounds` in world space, so the
+ *  item lands where the gesture drew it. Every drawing this file writes —
+ *  freehand, one shape, or a whole markup — goes through here. */
+function svgDocument(body: string, bounds: InkBounds): string {
   const width = r(bounds.maxX - bounds.minX);
   const height = r(bounds.maxY - bounds.minY);
-  const paths = strokes
-    .filter((stroke) => stroke.points.length > 0)
-    .map(
-      (stroke) =>
-        `  <path d="${inkPath(stroke.points)}" fill="none" stroke="${safeColor(stroke.color)}"` +
-        ` stroke-width="${r(stroke.width)}" stroke-linecap="round" stroke-linejoin="round"/>`,
-    )
-    .join("\n");
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"` +
-    ` viewBox="${r(bounds.minX)} ${r(bounds.minY)} ${width} ${height}">\n${paths}\n</svg>\n`
+    ` viewBox="${r(bounds.minX)} ${r(bounds.minY)} ${width} ${height}">\n${body}\n</svg>\n`
   );
+}
+
+/** The blob: strokes as an SVG whose viewBox is `bounds` in world space. */
+export function drawingSvg(strokes: InkStroke[], bounds: InkBounds): string {
+  const paths = strokes
+    .filter((stroke) => stroke.points.length > 0)
+    .map(strokeBody)
+    .join("\n");
+  return svgDocument(paths, bounds);
 }
 
 // ---------------------------------------------------------------------------
@@ -304,27 +315,24 @@ export function shapeSvg(
   color: string,
   strokeWidth: number,
 ): string {
+  return svgDocument(shapeBody(shape, drag, color, strokeWidth), shapeBounds(drag, strokeWidth));
+}
+
+/** One shape's element(s), no document around them. */
+function shapeBody(shape: ShapeTool, drag: ShapeDrag, color: string, strokeWidth: number): string {
   const safe = safeColor(color);
   const sw = r(strokeWidth);
-  const bounds = shapeBounds(drag, strokeWidth);
-  const width = r(bounds.maxX - bounds.minX);
-  const height = r(bounds.maxY - bounds.minY);
-  const header =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"` +
-    ` viewBox="${r(bounds.minX)} ${r(bounds.minY)} ${width} ${height}">`;
-
   const x1 = r(drag.x1);
   const y1 = r(drag.y1);
   const x2 = r(drag.x2);
   const y2 = r(drag.y2);
 
-  let body: string;
   switch (shape) {
     case "line":
-      body =
+      return (
         `  <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"` +
-        ` stroke="${safe}" stroke-width="${sw}" stroke-linecap="round"/>`;
-      break;
+        ` stroke="${safe}" stroke-width="${sw}" stroke-linecap="round"/>`
+      );
 
     case "arrow": {
       const headSize = arrowHeadSize(strokeWidth);
@@ -341,12 +349,12 @@ export function shapeSvg(
       // Perpendicular for the arrowhead wings
       const px = -uy * headSize * 0.45;
       const py = ux * headSize * 0.45;
-      body =
+      return (
         `  <line x1="${x1}" y1="${y1}" x2="${baseX}" y2="${baseY}"` +
         ` stroke="${safe}" stroke-width="${sw}" stroke-linecap="round"/>\n` +
         `  <polygon points="${tipX},${tipY} ${r(baseX + px)},${r(baseY + py)} ${r(baseX - px)},${r(baseY - py)}"` +
-        ` fill="${safe}" stroke="none"/>`;
-      break;
+        ` fill="${safe}" stroke="none"/>`
+      );
     }
 
     case "rect": {
@@ -354,10 +362,10 @@ export function shapeSvg(
       const ry = r(Math.min(drag.y1, drag.y2));
       const rw = r(Math.abs(drag.x2 - drag.x1));
       const rh = r(Math.abs(drag.y2 - drag.y1));
-      body =
+      return (
         `  <rect x="${rx}" y="${ry}" width="${rw}" height="${rh}"` +
-        ` fill="none" stroke="${safe}" stroke-width="${sw}" rx="2"/>`;
-      break;
+        ` fill="none" stroke="${safe}" stroke-width="${sw}" rx="2"/>`
+      );
     }
 
     case "ellipse": {
@@ -365,14 +373,12 @@ export function shapeSvg(
       const cy = r((drag.y1 + drag.y2) / 2);
       const erx = r(Math.abs(drag.x2 - drag.x1) / 2);
       const ery = r(Math.abs(drag.y2 - drag.y1) / 2);
-      body =
+      return (
         `  <ellipse cx="${cx}" cy="${cy}" rx="${erx}" ry="${ery}"` +
-        ` fill="none" stroke="${safe}" stroke-width="${sw}"/>`;
-      break;
+        ` fill="none" stroke="${safe}" stroke-width="${sw}"/>`
+      );
     }
   }
-
-  return `${header}\n${body}\n</svg>\n`;
 }
 
 /** Convert a shape drag into InkStrokes so that `drawingProperties` can read
@@ -389,4 +395,62 @@ export function shapeToStrokes(drag: ShapeDrag, color: string, strokeWidth: numb
       width: strokeWidth,
     },
   ];
+}
+
+// ---------------------------------------------------------------------------
+// Markup — several marks committed as ONE drawing.
+//
+// The Pen settles each breath of ink as its own item. A markup is the other
+// authoring shape: open a screen, draw everything you mean, and land it whole
+// — one item to attach to a comment, one to move with its target, one for an
+// agent to `rm` when the asked-for thing is done. Still a drawing: same blob
+// format, same `annotates` + `region`, no new kind.
+// ---------------------------------------------------------------------------
+
+/** The title a markup lands with, so `isocan ls` can tell it from a Pen sketch. */
+export const MARKUP_TITLE = "Markup";
+
+/** One mark in a markup: a freehand stroke or a geometric shape. */
+export type Mark =
+  | { kind: "stroke"; stroke: InkStroke }
+  | { kind: "shape"; shape: ShapeTool; drag: ShapeDrag; color: string; width: number };
+
+/** The box around every mark, padded the way ink is; null with nothing to draw. */
+export function markBounds(marks: readonly Mark[]): InkBounds | null {
+  let bounds: InkBounds | null = null;
+  for (const mark of marks) {
+    const b = mark.kind === "stroke" ? inkBounds([mark.stroke]) : shapeBounds(mark.drag, mark.width);
+    if (!b) continue;
+    bounds = bounds
+      ? {
+          minX: Math.min(bounds.minX, b.minX),
+          minY: Math.min(bounds.minY, b.minY),
+          maxX: Math.max(bounds.maxX, b.maxX),
+          maxY: Math.max(bounds.maxY, b.maxY),
+        }
+      : b;
+  }
+  return bounds;
+}
+
+/** The blob: every mark in one SVG whose viewBox is `bounds` in world space. */
+export function markupSvg(marks: readonly Mark[], bounds: InkBounds): string {
+  const body = marks
+    .map((mark) =>
+      mark.kind === "stroke"
+        ? mark.stroke.points.length > 0
+          ? strokeBody(mark.stroke)
+          : null
+        : shapeBody(mark.shape, mark.drag, mark.color, mark.width),
+    )
+    .filter((line): line is string => line !== null)
+    .join("\n");
+  return svgDocument(body, bounds);
+}
+
+/** Every mark as strokes, for `drawingProperties` to read the markup's ink. */
+export function markToStrokes(marks: readonly Mark[]): InkStroke[] {
+  return marks.flatMap((mark) =>
+    mark.kind === "stroke" ? [mark.stroke] : shapeToStrokes(mark.drag, mark.color, mark.width),
+  );
 }

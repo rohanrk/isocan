@@ -11160,9 +11160,10 @@ comment
   .option("--occurrence <number>", "which matching quote, counted from 1")
   .option("--at <x,y>", "freestanding at world coordinates")
   .option("--in <group>", "attach this group and its complete subtree as frozen context")
+  .option("--about <ref...>", "items this comment is about — a markup, say — carried in its item references")
   .option("--include-excluded", "explicitly include excluded context in this request")
   .action(
-    run(async (text: string, opts: { item?: string; at?: string; quote?: string; occurrence?: string; in?: string; includeExcluded?: boolean }, cmd: Command) => {
+    run(async (text: string, opts: { item?: string; at?: string; quote?: string; occurrence?: string; in?: string; about?: string[]; includeExcluded?: boolean }, cmd: Command) => {
       const ctx = await ctxOf(cmd);
       const { canvas: p, snapshot } = await canvasAndSnapshot(ctx, { create: true });
       if (!opts.item && !opts.at) throw new Error("pass --item <item> or --at <x,y>");
@@ -11182,7 +11183,11 @@ comment
         anchorItemId = null;
       }
       const threadId = newThreadId();
-      const first = await newComment(ctx, p.id, snapshot, text, { in: opts.in, includeExcluded: opts.includeExcluded });
+      // `--about` on an anchored thread carries the anchor too, as the app's
+      // composer does: an agent reading `items` sees the screen AND the
+      // markup, whichever surface posted it.
+      const about = opts.about && anchorItemId ? Array.from(new Set([anchorItemId, ...opts.about])) : opts.about;
+      const first = await newComment(ctx, p.id, snapshot, text, { items: about, in: opts.in, includeExcluded: opts.includeExcluded });
       const receipt = await sendOp(ctx, p.id, {
         type: "thread.create",
         threadId,
@@ -11203,13 +11208,14 @@ comment
   .command("reply <thread> <text>")
   .description("Reply to a thread")
   .option("--in <group>", "attach this group and its complete subtree as frozen context")
+  .option("--about <ref...>", "items this reply is about — a markup, say — carried in its item references")
   .option("--include-excluded", "explicitly include excluded context in this request")
   .action(
-    run(async (threadRef: string, text: string, opts: { in?: string; includeExcluded?: boolean }, cmd: Command) => {
+    run(async (threadRef: string, text: string, opts: { in?: string; about?: string[]; includeExcluded?: boolean }, cmd: Command) => {
       const ctx = await ctxOf(cmd);
       const { canvas: p, snapshot } = await canvasAndSnapshot(ctx);
       const thread = resolveThread(snapshot, threadRef);
-      const comment = await newComment(ctx, p.id, snapshot, text, { in: opts.in, includeExcluded: opts.includeExcluded });
+      const comment = await newComment(ctx, p.id, snapshot, text, { items: opts.about, in: opts.in, includeExcluded: opts.includeExcluded });
       const receipt = await sendOp(ctx, p.id, {
         type: "thread.reply",
         threadId: thread.id,

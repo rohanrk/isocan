@@ -918,6 +918,16 @@ isocan fit <items...>                  # grow items to the size their content wa
   marks themselves. The comment that came with it carries the ink in its item
   references, and the thread is anchored to the TARGET, so `isocan wait --item
   <target>` hears it.
+
+  A drawing titled **Markup** is the same thing made deliberately: the person
+  opened the screen in a markup window, drew arrows, boxes and circles about
+  it, and landed all of them as ONE item — so expect several marks in one SVG,
+  and one `region` that covers the lot. Read it, act, `rm` it like any mark.
+  To attach a markup (or any item) to a comment of your own without spelling
+  it in the words: `isocan comment add "…" --item <screen> --about <markup>`,
+  or `--about` on `comment reply`. The anchor rides along in `items` too, as
+  it does when the app's composer attaches a markup — so `items` reads
+  `[screen, markup]` whichever surface posted it.
 - **Clear a mark once you have acted on it; leave a drawing alone.** Ink that
   annotates an item asked for something — when the new version answers it,
   `isocan rm <ink>` and say so in your reply, or the screen keeps wearing an X

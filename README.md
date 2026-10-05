@@ -210,6 +210,19 @@ That parity is a house rule with a test behind it: see AGENTS.md.
   being a comment an agent can act on. The choice is remembered per browser;
   Freehand switches back. From the CLI the same thing is
   `isocan add shape.svg --drawing`.
+- **Mark up**: when a markup is more than one breath — six arrows and two
+  boxes about one screen — open the screen in the markup window instead
+  (**Mark up** under a selected screen or image, in its right-click menu, or
+  from ⌘K). It renders the screen at a size you can aim at, you draw on it
+  with the same five tools and inks, nothing reaches the canvas until **Add
+  markup**, and then everything lands as ONE drawing item titled *Markup*
+  that annotates the screen with the region it covers. The comment composer
+  opens about it, as after the Pen. Or go the other way round: while writing
+  a comment on a screen, press **Mark up** in the composer, draw, **Attach to
+  comment** — your draft survives, and the markup is in the comment's item
+  references, so the agent that reads the comment reads the markup. From the
+  CLI the same attachment is `isocan comment add "…" --item <screen> --about
+  <markup>`.
 - **Text (`T`)**: click and type words straight onto the canvas — a chromeless
   node that is a real `.md`. The bar over the words picks a size step (S/M/L/XL,
   each readable twice as far out), a face (sans, mono, serif, handwriting), a

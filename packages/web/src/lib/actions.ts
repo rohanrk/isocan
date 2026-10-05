@@ -1,4 +1,4 @@
-import { isGroupItem, keyFor } from "@isocan/core";
+import { isGroupItem, isMarkupTarget, keyFor } from "@isocan/core";
 import { changeCanvasGroup, groupsEnabled, enterCanvasGroup, groupTask, openGroupCreation, openGroupMigration, openGroupAddition, selectParentGroup } from "./canvasgroups.ts";
 import type { NavigateFunction } from "react-router-dom";
 import type { Actor, AlignEdge } from "@isocan/core";
@@ -283,6 +283,19 @@ export const ACTIONS: readonly Action[] = [
     group: "Canvas",
     available: (ctx) => onCanvas(ctx) && ctx.selection.length === 1,
     run: (ctx) => ctx.navigate(itemPath(ctx.canvasId!, ctx.selection[0]!)),
+  },
+  {
+    id: "mark-up",
+    name: "Mark up this",
+    hint: "draw on the selected screen and land every mark as one annotation",
+    group: "Canvas",
+    writes: true,
+    available: (ctx) => {
+      if (!onCanvas(ctx) || ctx.selection.length !== 1) return false;
+      const item = useCanvasStore.getState().canvas?.items[ctx.selection[0]!];
+      return !!item && isMarkupTarget(item);
+    },
+    run: (ctx) => void import("../components/MarkupModal.tsx").then((m) => m.openMarkup({ canvasId: ctx.canvasId!, actor: ctx.actor, itemId: ctx.selection[0]! })),
   },
   {
     id: "export-deck",

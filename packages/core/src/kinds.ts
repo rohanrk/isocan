@@ -13,7 +13,7 @@ import { isCanvasItem } from "./canvasitem.ts";
 import { isDrawingItem } from "./drawing.ts";
 import { moduleKindOf, moduleKinds } from "./modules.ts";
 import { isTextItem } from "./textnode.ts";
-import type { Item } from "./model.ts";
+import { visualFaceOf, type Item } from "./model.ts";
 
 /** The kinds the product ships with — the ones every record below names. */
 export type BuiltinKind =
@@ -154,6 +154,20 @@ export function isFramedItem(item: Item): boolean {
   if (current?.visual && current.visual.mimeType === "text/html") return true;
   const kind = itemKind(item);
   return kind === "screen" || kind === "site";
+}
+
+/**
+ * Can this item be MARKED UP — opened in the markup modal and drawn over as
+ * one annotation? Anything with a visual face to draw on: a framed item (a
+ * screen, a site) or an image. Not ink: ink about ink is not a thing
+ * (`annotationTargetFor` says the same). One answer, asked by the under-item
+ * chip, the context menu, the palette and the comment composer.
+ */
+export function isMarkupTarget(item: Item): boolean {
+  if (isDrawingItem(item)) return false;
+  if (isFramedItem(item)) return true;
+  const current = item.versions.find((v) => v.id === item.currentVersionId) ?? item.versions[0];
+  return current ? visualFaceOf(current).mimeType.startsWith("image/") : false;
 }
 
 /**

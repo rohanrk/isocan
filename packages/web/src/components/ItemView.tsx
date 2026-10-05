@@ -60,7 +60,7 @@ import { actorColorIn, useActorColors } from "../lib/colors.ts";
 import { snapBox, unionBox } from "../lib/snap.ts";
 import { COUNTER_SCALED_CSS, nameRoomCss, TEXT_MARK_CSS, UNDER_ROW_CSS, underSlotFor, Z_ICON, Z_LEGIBLE, Z_MARK, Z_NAME, Z_ROOMY, Z_SPELL, zoomDecisions, type ZoomHeld } from "../lib/chrome.ts";
 import { useNavigate } from "react-router-dom";
-import { itemPath } from "@isocan/core";
+import { isMarkupTarget, itemPath } from "@isocan/core";
 /**
  * **A canvas placed on a canvas is rare, so it is not in every first visit.**
  * The card pulls the other canvas's snapshot, lays out its items as blocks and
@@ -104,6 +104,14 @@ const EXPAND = (
   <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden fill="none"
        stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4" />
+  </svg>
+);
+
+/** A nib over a corner — the markup chip's glyph, beside the four corners. */
+const NIB = (
+  <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden fill="none"
+       stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 13l1-4 7-7 3 3-7 7-4 1z" />
   </svg>
 );
 
@@ -1360,6 +1368,24 @@ function ItemViewInner({
                 >
                   {EXPAND}
                   {spellItOut && <span>Full screen</span>}
+                </button>
+              )}
+              {/* Mark up: open the screen in the markup modal and land every
+                  mark as ONE annotation. Only on things with a face to draw
+                  on (`isMarkupTarget`), and only for somebody who may write. */}
+              {!resize && canEdit && isMarkupTarget(item) && (
+                <button
+                  className={`fullscreen-btn${spellItOut ? "" : " compact"}`}
+                  data-tip={spellItOut ? "Draw on it, land one annotation" : "Mark up — draw on it, land one annotation"}
+                  aria-label="Mark up"
+                  onPointerDown={stop}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void import("./MarkupModal.tsx").then((m) => m.openMarkup({ canvasId, actor, itemId: item.id }));
+                  }}
+                >
+                  {NIB}
+                  {spellItOut && <span>Mark up</span>}
                 </button>
               )}
               <span>
