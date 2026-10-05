@@ -20,7 +20,6 @@ import {
   modifierClick,
   type WebModule,
 } from "@isocan/core";
-import { VoiceBeam } from "voice-glow";
 import { LevelMeter } from "@isocan/core/voice-dsp";
 import { Playback, capture, fromBytes, type Capture } from "./audio.ts";
 import { LIVE_MODEL, LIVE_VOICES, canvasSnapshotText, commandsBrief, isLiveVoice, liveSetup, liveUrl, planForCall, toolScheduling, type SnapshotItem } from "./live.ts";
@@ -1767,44 +1766,27 @@ const COMPOSER_CSS = `
  * It shares `useTalkSession` with the floating mic rather than opening a
  * second one, so the two doors are two ways into ONE conversation.
  */
-function ComposerMic({ canvasId, canvas, host, groupMode, theme, selection, active, takeOver }: ComposerFacts) {
+function ComposerMic({ canvasId, canvas, host, groupMode, theme: _theme, selection, active, takeOver }: ComposerFacts) {
   const session = useTalkSession({ canvasId, canvas, canEdit: true, groupMode, host, selection });
   const [configOpen, setConfigOpen] = useState(false);
   const live = session.state === "live";
 
-  /**
-   * **The level the glow reads, kept out of React.**
-   *
-   * The meters already paint many times a second; this taps the same
-   * callbacks into refs and hands the beam a getter it samples once per
-   * frame. Setting state here instead would re-render the composer at the
-   * frame rate, which is the mistake the package's own `level` docs warn
-   * about.
-   *
-   * Whoever is talking drives it — your voice on the way in, the reply on
-   * the way out — so the glow belongs to the conversation rather than to
-   * the microphone.
-   */
   const inLevel = useRef(0);
   const outLevel = useRef(0);
-  const quietSince = useRef<number>(0);
-  const [thinking, setThinking] = useState(false);
-  const readLevel = useCallback(() => Math.max(inLevel.current, outLevel.current), []);
-  /* What the BEAM settled on for this frame — its own attack, release and
-     idle breathing applied to `readLevel`. The wave draws from this rather
-     than from the raw meters so the bars and the glow are one movement; see
-     `Wave`'s `level`. */
   const beamLevel = useRef(0);
-  const takeBeamLevel = useCallback((level: number) => {
-    beamLevel.current = level;
-  }, []);
 
   /* The levels are tapped once, here, rather than by whatever happens to be
-     drawing them — so the wave and the glow read the same numbers and a
-     component can be swapped without the level going quiet. */
+     drawing them — so the wave reads the numbers and a component can be
+     swapped without the level going quiet. */
   useEffect(() => {
-    session.registerInMeter((level) => (inLevel.current = level));
-    session.registerOutMeter((level) => (outLevel.current = level));
+    session.registerInMeter((level) => {
+      inLevel.current = level;
+      beamLevel.current = Math.max(level, outLevel.current);
+    });
+    session.registerOutMeter((level) => {
+      outLevel.current = level;
+      beamLevel.current = Math.max(inLevel.current, level);
+    });
   }, [session]);
   const [expanded, setExpanded] = useState(false);
   /* The picked voice's own name, or "Voice" when the provider's default is
@@ -1861,29 +1843,6 @@ function ComposerMic({ canvasId, canvas, host, groupMode, theme, selection, acti
     void postSession(session.lines);
   }, [live, postSession, session.lines]);
 
-  useEffect(() => {
-    if (!live) {
-      setThinking(false);
-      return;
-    }
-    /* Silence between the two of you is the reply being thought about. A
-       short hold keeps the beam from gathering in the gaps inside a
-       sentence, which is the difference between "thinking" and "breathing". */
-    const id = window.setInterval(() => {
-      const quiet = Math.max(inLevel.current, outLevel.current) < 0.02;
-      if (!quiet) {
-        quietSince.current = 0;
-        setThinking(false);
-        return;
-      }
-      const now = performance.now();
-      if (quietSince.current === 0) quietSince.current = now;
-      else if (now - quietSince.current > 600) setThinking(true);
-    }, 120);
-    return () => window.clearInterval(id);
-  }, [live]);
-
-
   /**
    * **Both states that are not "a button" want the row**, and asking for it
    * is what makes the key panel possible at all: as a popover it was 300px
@@ -1912,89 +1871,59 @@ function ComposerMic({ canvasId, canvas, host, groupMode, theme, selection, acti
   if (live) {
     return (
       <>
-        <VoiceBeam
-        className="talk-beam"
-        /* The bar IS the composer while a session runs, so the glow rises
-           from the composer's own bottom edge — which is the effect this is,
-           rather than a decoration sitting near it.
-
-           default rather than pill. It was pill while the wrapped thing was a
-           ~294x32 bar and that was right then — but pill carries scale 0.45,
-           so the whole effect ran at 45% size, which is why it read as a
-           faint wash once the transcript made the block tall. default is
-           tuned for a chat input or card, which is now what this is. */
-        type="default"
-        /* Rise and spread up, resting presence DOWN. The ask was for it to
-           bump around more, and what reads as movement is the CONTRAST
-           between quiet and loud rather than the absolute size — a glow that
-           idles bright has nowhere to go when a voice arrives. */
-        reach={2.2}
-        spread={1.4}
-        idle={0.1}
-        /* A getter, not a number: the level changes many times a second and
-           the package samples this once per frame, so the glow is smooth
-           without React re-rendering the row 60 times a second. */
-        level={readLevel}
-        /* Handed straight to a ref, never to state: this fires every frame. */
-        onLevel={takeBeamLevel}
-        /* Silence in a live session is the reply being thought about, which
-           is exactly what the travelling beam is for. */
-        processing={thinking}
-        theme={theme}
-        active
-      >
-        <div className="talk-live-block" role="group" aria-label="Voice conversation">
-        <Transcript
-          lines={session.lines}
-          you={host.viewer.name}
-          them={voiceName}
-          expanded={expanded}
-          onExpand={() => setExpanded((v) => !v)}
-        />
-        <div className="talk-bar">
-          <Wave level={beamLevel} inLevel={inLevel} outLevel={outLevel} />
-          {/* No toast here: the transcript above says the same thing with a
-              name on it, and two copies of the last line is the one-string-
-              two-spellings bug in pixels. The floating mic keeps its toast —
-              it has no panel to hold a transcript. */}
-          {/* **Who answers.** A native select, so it is one tap on a phone and
-              arrow keys on a desktop, and thirty names do not need chrome of
-              our own. Changing it reconnects — said in the label rather than
-              discovered when the reply stops mid-word. */}
-          <label className="talk-voice">
-            <span className="talk-log-sr">Voice</span>
-            <select
-              value={session.voice}
-              onChange={(e) => {
-                session.setVoice(e.target.value);
-                /* Reconnect on the new voice, keeping the transcript: the
-                   provider takes speechConfig at setup and nowhere else. */
-                session.stop();
-                void session.start();
-              }}
-              title="Who answers — changing this reconnects the session"
-            >
-              {!isLiveVoice(session.voice) && <option value="">Default voice</option>}
-              {LIVE_VOICES.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            className="talk-bar-stop"
-            onClick={() => session.stop()}
-            aria-label="End the conversation"
-          >
-            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-              <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
-            </svg>
-          </button>
+        <div className="talk-beam">
+          <div className="talk-live-block" role="group" aria-label="Voice conversation">
+            <Transcript
+              lines={session.lines}
+              you={host.viewer.name}
+              them={voiceName}
+              expanded={expanded}
+              onExpand={() => setExpanded((v) => !v)}
+            />
+            <div className="talk-bar">
+              <Wave level={beamLevel} inLevel={inLevel} outLevel={outLevel} />
+              {/* No toast here: the transcript above says the same thing with a
+                  name on it, and two copies of the last line is the one-string-
+                  two-spellings bug in pixels. The floating mic keeps its toast —
+                  it has no panel to hold a transcript. */}
+              {/* **Who answers.** A native select, so it is one tap on a phone and
+                  arrow keys on a desktop, and thirty names do not need chrome of
+                  our own. Changing it reconnects — said in the label rather than
+                  discovered when the reply stops mid-word. */}
+              <label className="talk-voice">
+                <span className="talk-log-sr">Voice</span>
+                <select
+                  value={session.voice}
+                  onChange={(e) => {
+                    session.setVoice(e.target.value);
+                    /* Reconnect on the new voice, keeping the transcript: the
+                       provider takes speechConfig at setup and nowhere else. */
+                    session.stop();
+                    void session.start();
+                  }}
+                  title="Who answers — changing this reconnects the session"
+                >
+                  {!isLiveVoice(session.voice) && <option value="">Default voice</option>}
+                  {LIVE_VOICES.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="talk-bar-stop"
+                onClick={() => session.stop()}
+                aria-label="End the conversation"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                  <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
-        </div>
-        </VoiceBeam>
         <style>{COMPOSER_CSS}</style>
       </>
     );

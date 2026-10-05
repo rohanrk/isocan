@@ -202,7 +202,14 @@ That parity is a house rule with a test behind it: see AGENTS.md.
   resizes, deletes, undoes, and versions like anything else. It just wears no
   card: the ink IS the item — and since that makes its box invisible, pointing
   at a drawing outlines the box you would grab, and `⌥`-click steps down
-  through a stack of them.
+  through a stack of them. **Shapes**: the row under the ink well switches
+  the Pen from freehand to an arrow, rectangle, ellipse or line — drag from
+  corner to corner and the shape lands as the same kind of drawing item, in
+  the same ink, with the same rules: drawn over an item it annotates that
+  item and the comment composer opens, so a markup is one gesture away from
+  being a comment an agent can act on. The choice is remembered per browser;
+  Freehand switches back. From the CLI the same thing is
+  `isocan add shape.svg --drawing`.
 - **Text (`T`)**: click and type words straight onto the canvas — a chromeless
   node that is a real `.md`. The bar over the words picks a size step (S/M/L/XL,
   each readable twice as far out), a face (sans, mono, serif, handwriting), a

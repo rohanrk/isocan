@@ -261,3 +261,132 @@ export function drawingSvg(strokes: InkStroke[], bounds: InkBounds): string {
     ` viewBox="${r(bounds.minX)} ${r(bounds.minY)} ${width} ${height}">\n${paths}\n</svg>\n`
   );
 }
+
+// ---------------------------------------------------------------------------
+// Shape tools — geometric markup primitives that land as ordinary drawings.
+// ---------------------------------------------------------------------------
+
+/** The shape sub-modes available under the Pen tool. */
+export type ShapeTool = "arrow" | "rect" | "ellipse" | "line";
+
+/** Start and end of a shape drag, in world coordinates. */
+export interface ShapeDrag {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+/** The world bounding box of a shape drag, padded the same way ink is. */
+export function shapeBounds(drag: ShapeDrag, strokeWidth: number): InkBounds {
+  const reach = strokeWidth / 2;
+  const minX = Math.min(drag.x1, drag.x2) - reach - INK_PADDING;
+  const minY = Math.min(drag.y1, drag.y2) - reach - INK_PADDING;
+  const maxX = Math.max(drag.x1, drag.x2) + reach + INK_PADDING;
+  const maxY = Math.max(drag.y1, drag.y2) + reach + INK_PADDING;
+  return { minX, minY, maxX, maxY };
+}
+
+/** Arrowhead size, proportional to stroke width but capped so a thin arrow
+ *  still has a visible head and a fat one does not swallow the shaft. */
+function arrowHeadSize(strokeWidth: number): number {
+  return Math.max(8, Math.min(20, strokeWidth * 4));
+}
+
+/**
+ * The SVG markup for one shape, using the same viewBox convention as
+ * `drawingSvg`: the viewBox IS the world box, so the item lands where the
+ * gesture drew it. The shape is a drawing in every way that matters.
+ */
+export function shapeSvg(
+  shape: ShapeTool,
+  drag: ShapeDrag,
+  color: string,
+  strokeWidth: number,
+): string {
+  const safe = safeColor(color);
+  const sw = r(strokeWidth);
+  const bounds = shapeBounds(drag, strokeWidth);
+  const width = r(bounds.maxX - bounds.minX);
+  const height = r(bounds.maxY - bounds.minY);
+  const header =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"` +
+    ` viewBox="${r(bounds.minX)} ${r(bounds.minY)} ${width} ${height}">`;
+
+  const x1 = r(drag.x1);
+  const y1 = r(drag.y1);
+  const x2 = r(drag.x2);
+  const y2 = r(drag.y2);
+
+  let body: string;
+  switch (shape) {
+    case "line":
+      body =
+        `  <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"` +
+        ` stroke="${safe}" stroke-width="${sw}" stroke-linecap="round"/>`;
+      break;
+
+    case "arrow": {
+      const headSize = arrowHeadSize(strokeWidth);
+      const dx = drag.x2 - drag.x1;
+      const dy = drag.y2 - drag.y1;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len;
+      const uy = dy / len;
+      // Pull the line back so it ends at the arrowhead's base
+      const tipX = r(drag.x2);
+      const tipY = r(drag.y2);
+      const baseX = r(drag.x2 - ux * headSize);
+      const baseY = r(drag.y2 - uy * headSize);
+      // Perpendicular for the arrowhead wings
+      const px = -uy * headSize * 0.45;
+      const py = ux * headSize * 0.45;
+      body =
+        `  <line x1="${x1}" y1="${y1}" x2="${baseX}" y2="${baseY}"` +
+        ` stroke="${safe}" stroke-width="${sw}" stroke-linecap="round"/>\n` +
+        `  <polygon points="${tipX},${tipY} ${r(baseX + px)},${r(baseY + py)} ${r(baseX - px)},${r(baseY - py)}"` +
+        ` fill="${safe}" stroke="none"/>`;
+      break;
+    }
+
+    case "rect": {
+      const rx = r(Math.min(drag.x1, drag.x2));
+      const ry = r(Math.min(drag.y1, drag.y2));
+      const rw = r(Math.abs(drag.x2 - drag.x1));
+      const rh = r(Math.abs(drag.y2 - drag.y1));
+      body =
+        `  <rect x="${rx}" y="${ry}" width="${rw}" height="${rh}"` +
+        ` fill="none" stroke="${safe}" stroke-width="${sw}" rx="2"/>`;
+      break;
+    }
+
+    case "ellipse": {
+      const cx = r((drag.x1 + drag.x2) / 2);
+      const cy = r((drag.y1 + drag.y2) / 2);
+      const erx = r(Math.abs(drag.x2 - drag.x1) / 2);
+      const ery = r(Math.abs(drag.y2 - drag.y1) / 2);
+      body =
+        `  <ellipse cx="${cx}" cy="${cy}" rx="${erx}" ry="${ery}"` +
+        ` fill="none" stroke="${safe}" stroke-width="${sw}"/>`;
+      break;
+    }
+  }
+
+  return `${header}\n${body}\n</svg>\n`;
+}
+
+/** Convert a shape drag into InkStrokes so that `drawingProperties` can read
+ *  the colour (for `properties.ink`). A shape is one synthetic stroke whose
+ *  polyline matches the outline — close enough for colour picking. */
+export function shapeToStrokes(drag: ShapeDrag, color: string, strokeWidth: number): InkStroke[] {
+  return [
+    {
+      points: [
+        { x: drag.x1, y: drag.y1 },
+        { x: drag.x2, y: drag.y2 },
+      ],
+      color,
+      width: strokeWidth,
+    },
+  ];
+}

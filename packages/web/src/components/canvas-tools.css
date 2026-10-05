@@ -21,3 +21,30 @@
   box-shadow: var(--shadow-pop);
 }
 .ink-sep { width: 1px; align-self: stretch; margin: 1px 1px; background: var(--line); }
+
+/* ---------- the shape picker ----------
+   A second row below the ink-well: which SHAPE the Pen is drawing.
+   Same visual language: a pill hung off the rail, with five buttons. */
+
+.shape-well {
+  position: absolute; right: calc(100% + 10px); top: calc(50% + 22px); transform: translateY(-50%);
+  display: flex; align-items: center; gap: 3px; padding: 4px 6px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+  box-shadow: var(--shadow-pop);
+}
+.shape-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border: none; border-radius: 6px;
+  background: transparent; color: var(--ink-muted); cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.shape-btn:hover { background: var(--chip-hover); color: var(--ink); }
+.shape-btn.active { background: var(--accent-wash); color: var(--accent-text); }
+
+/* ---------- the shape preview ----------
+   Lives in .world like .ink-layer, so the canvas transform pans/zooms it. */
+
+.shape-preview {
+  position: absolute; overflow: visible; pointer-events: none;
+  opacity: 0.8;
+}

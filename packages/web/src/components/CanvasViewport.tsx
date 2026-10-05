@@ -112,6 +112,7 @@ const CanvasThemeLayer = lazy(() =>
   import("./CanvasThemeLayer.tsx").then((m) => ({ default: m.CanvasThemeLayer })),
 );
 import { InkLayer, SketchBar } from "./InkLayer.tsx";
+import { ShapePreview } from "./ShapePreview.tsx";
 import { EdgeRadar } from "./EdgeRadar.tsx";
 
 // WebKit-only trackpad pinch event; not in the standard TS DOM lib.
@@ -687,8 +688,15 @@ export function CanvasViewport({ canvasId, actor, onPlanItem, currentNode }: { c
     }
 
     // The Pen draws from anywhere — over items too, so you can annotate one.
+    // When a shape sub-mode is active, the gesture is a drag that produces a
+    // geometric shape instead of freehand ink.
     if (activeTool === "pen" && e.button === 0 && !wantsPan) {
-      startStroke(e);
+      const ui = useUiStore.getState();
+      if (ui.penShape) {
+        startShapeDrag(e);
+      } else {
+        startStroke(e);
+      }
       return;
     }
 
@@ -869,6 +877,48 @@ export function CanvasViewport({ canvasId, actor, onPlanItem, currentNode }: { c
       el.removeEventListener("pointerup", onUp);
       el.removeEventListener("pointercancel", onUp);
       armSettle();
+    }
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
+  }
+
+  /** A shape drag: pointer down records the start, pointer move updates the
+   * preview, pointer up places the finished shape as a canvas item. */
+  function startShapeDrag(e: React.PointerEvent) {
+    e.preventDefault();
+    const el = ref.current!;
+    el.setPointerCapture(e.pointerId);
+    const ui = useUiStore.getState();
+    const start = screenToWorld(ui.viewport, e.clientX, e.clientY);
+    const color = ui.inkColor ?? actorColor(actor.id);
+    const strokeWidth = INK_WIDTH / ui.viewport.scale;
+    const shape = ui.penShape!;
+    ui.setShapeDrag({ x1: start.x, y1: start.y, x2: start.x, y2: start.y });
+
+    function onMove(ev: PointerEvent) {
+      const state = useUiStore.getState();
+      const world = screenToWorld(state.viewport, ev.clientX, ev.clientY);
+      state.setShapeDrag({ x1: start.x, y1: start.y, x2: world.x, y2: world.y });
+    }
+    function onUp(ev: PointerEvent) {
+      if (el.hasPointerCapture(ev.pointerId)) el.releasePointerCapture(ev.pointerId);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+      const state = useUiStore.getState();
+      const end = screenToWorld(state.viewport, ev.clientX, ev.clientY);
+      state.setShapeDrag(null);
+      // Only place if the drag had meaningful size (> 4px in screen space)
+      const dx = ev.clientX - e.clientX;
+      const dy = ev.clientY - e.clientY;
+      if (Math.hypot(dx, dy) < 4) return;
+      const drag = { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
+      void import("../lib/shapeplace.ts").then((m) =>
+        m.placeShape(canvasId, actor, shape, drag, color, strokeWidth).catch((err: Error) =>
+          console.error("could not place the shape", err),
+        ),
+      );
     }
     el.addEventListener("pointermove", onMove);
     el.addEventListener("pointerup", onUp);
@@ -1280,6 +1330,7 @@ export function CanvasViewport({ canvasId, actor, onPlanItem, currentNode }: { c
           </Suspense>
         )}
         <InkLayer />
+        <ShapePreview />
         {canEdit && <TextComposerWhenOpen canvasId={canvasId} actor={actor} />}
       </Follows>
       <CommentLayer canvasId={canvasId} actor={actor} />

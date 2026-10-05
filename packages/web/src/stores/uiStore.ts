@@ -1,7 +1,7 @@
 import type { CursorSignal, GroupAim, GroupBox, TextAnchor } from "@isocan/core";
 import { create } from "zustand";
 import { shallow } from "zustand/shallow";
-import type { AddKind, InkPoint, InkStroke, TextFace, TextStyle, Paper, TextColourValue } from "@isocan/core";
+import type { AddKind, InkPoint, InkStroke, TextFace, TextStyle, Paper, TextColourValue, ShapeTool, ShapeDrag } from "@isocan/core";
 import { TEXT_FACES, TEXT_STYLES, isPaper, textFontFrom, textInk } from "@isocan/core";
 import type { Clipboard } from "../lib/clipboard.ts";
 import type { MenuEntry } from "../components/ContextMenu.tsx";
@@ -176,6 +176,13 @@ interface UiStore {
   /** The Pen's color, or null for "whatever color I am" — the identity color
    * worn by your cursor and your face in the pile. Remembered per browser. */
   inkColor: string | null;
+  /** The Pen's shape sub-mode: null is freehand (the default). When set, the
+   * Pen draws geometric shapes (arrow, rect, ellipse, line) instead of
+   * freehand ink. Remembered per browser. */
+  penShape: ShapeTool | null;
+  /** Live shape drag preview while a shape is being drawn. World coordinates,
+   * ephemeral — cleared on pointer up. */
+  shapeDrag: ShapeDrag | null;
   /** The active pointer tool, chosen from the right rail. "select" is the
    * default (click + marquee); "hand" pans on drag; "comment" drops pins.
    * `commentMode` below is kept in lockstep as the derived convenience the
@@ -350,6 +357,10 @@ interface UiStore {
   setHelpOpen: (open: boolean) => void;
   /** Choose the ink; null goes back to your identity color. */
   setInkColor: (color: string | null) => void;
+  /** Choose the pen shape sub-mode; null goes back to freehand. */
+  setPenShape: (shape: ShapeTool | null) => void;
+  /** Update the live shape drag preview. */
+  setShapeDrag: (drag: ShapeDrag | null) => void;
   /** Start a stroke — the pen went down. */
   beginStroke: (stroke: InkStroke) => void;
   /** The pen moved: another sample on the stroke in hand. */
@@ -414,6 +425,7 @@ interface UiStore {
 }
 
 const INK_KEY = "isocan.ink";
+const PEN_SHAPE_KEY = "isocan.penShape";
 const MINIMAP_KEY = "isocan.minimap";
 const PRESENTER_NOTES_KEY = "isocan.presenterNotes";
 const PANEL_WIDTH_KEY = "isocan.panelWidth";
@@ -659,6 +671,26 @@ function writeInkColor(color: string | null): void {
   }
 }
 
+const SHAPE_VALUES = new Set<string>(["arrow", "rect", "ellipse", "line"]);
+
+function readPenShape(): ShapeTool | null {
+  try {
+    const raw = localStorage.getItem(PEN_SHAPE_KEY);
+    return raw && SHAPE_VALUES.has(raw) ? (raw as ShapeTool) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePenShape(shape: ShapeTool | null): void {
+  try {
+    if (shape === null) localStorage.removeItem(PEN_SHAPE_KEY);
+    else localStorage.setItem(PEN_SHAPE_KEY, shape);
+  } catch {
+    // Storage denied — the choice lasts until the tab closes.
+  }
+}
+
 /** Local-only UI state — never synced, deliberately per-client. */
 export const useUiStore = create<UiStore>((set, get) => {
   // The width is read once here, so the first paint on a phone is already
@@ -710,6 +742,8 @@ export const useUiStore = create<UiStore>((set, get) => {
     penSession: false,
     helpOpen: false,
     inkColor: readInkColor(),
+    penShape: readPenShape(),
+    shapeDrag: null,
     activeTool: "select",
     commentMode: false,
     cursorSignalEditing: false,
@@ -817,6 +851,11 @@ export const useUiStore = create<UiStore>((set, get) => {
       writeInkColor(inkColor);
       set({ inkColor });
     },
+    setPenShape: (penShape) => {
+      writePenShape(penShape);
+      set({ penShape });
+    },
+    setShapeDrag: (shapeDrag) => set({ shapeDrag }),
     beginStroke: (stroke) => set((s) => ({ sketch: [...s.sketch, stroke] })),
     extendStroke: (point) =>
       set((s) => {

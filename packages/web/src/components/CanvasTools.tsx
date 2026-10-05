@@ -2,7 +2,7 @@ import "./touch-controls.css";
 import "./canvas-tools.css";
 import { selectCreatedItems } from "../lib/groupplacement.ts";
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import type { Actor, Placement } from "@isocan/core";
+import type { Actor, Placement, ShapeTool } from "@isocan/core";
 import { type Tool, useUiStore } from "../stores/uiStore.ts";
 import { addFailure, addFiles } from "../lib/upload.ts";
 import { placeableArea, revealIfOffscreen } from "../lib/spot.ts";
@@ -167,6 +167,7 @@ export function CanvasTools({ canvasId, actor }: { canvasId: string; actor: Acto
   const adding = useUiStore((s) => s.adding);
   const setActiveTool = useUiStore((s) => s.setActiveTool);
   const inkColor = useUiStore((s) => s.inkColor);
+  const penShape = useUiStore((s) => s.penShape);
   const marksOpen = useUiStore((s) => s.marksOpen);
   const tools = useCanvasTools(canvasId);
   const historyOpen = useUiStore((s) => s.historyOpen);
@@ -295,6 +296,16 @@ export function CanvasTools({ canvasId, actor }: { canvasId: string; actor: Acto
               ))}
             </div>
           )}
+          {t.tool === "pen" && activeTool === "pen" && (
+            <div className="shape-well" role="group" aria-label="Pen shape">
+              <ShapeButton shape={null} label="Freehand" current={penShape} />
+              <div className="ink-sep" />
+              <ShapeButton shape="arrow" label="Arrow" current={penShape} />
+              <ShapeButton shape="rect" label="Rectangle" current={penShape} />
+              <ShapeButton shape="ellipse" label="Ellipse" current={penShape} />
+              <ShapeButton shape="line" label="Line" current={penShape} />
+            </div>
+          )}
         </div>
       ))}
       <button className="tool-btn tool-more" data-tip="More tools" aria-label="More tools" aria-expanded={more} onClick={() => setMore(!more)}>⋯</button>
@@ -381,5 +392,61 @@ export function CanvasTools({ canvasId, actor }: { canvasId: string; actor: Acto
         accept=".md,.markdown,.txt,.html,.htm,image/*,video/*"
       />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shape sub-mode picker — the row of shapes below the ink color well.
+// ---------------------------------------------------------------------------
+
+const SHAPE_ICONS: Record<string, ReactNode> = {
+  freehand: (
+    <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12c1-3 3-8 5-8s2 5 5 2" />
+    </svg>
+  ),
+  arrow: (
+    <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 13 13 3" />
+      <path d="M7 3h6v6" />
+    </svg>
+  ),
+  rect: (
+    <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+      <rect x="2.5" y="3.5" width="11" height="9" rx="1" />
+    </svg>
+  ),
+  ellipse: (
+    <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.4">
+      <ellipse cx="8" cy="8" rx="5.5" ry="4.5" />
+    </svg>
+  ),
+  line: (
+    <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <path d="M3 13 13 3" />
+    </svg>
+  ),
+};
+
+function ShapeButton({
+  shape,
+  label,
+  current,
+}: {
+  shape: ShapeTool | null;
+  label: string;
+  current: ShapeTool | null;
+}) {
+  const active = shape === current;
+  return (
+    <button
+      className={`shape-btn${active ? " active" : ""}`}
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      onClick={() => useUiStore.getState().setPenShape(shape)}
+    >
+      {SHAPE_ICONS[shape ?? "freehand"]}
+    </button>
   );
 }
