@@ -79,12 +79,15 @@ describe("shapeSvg", () => {
 describe("shapeToStrokes", () => {
   it("is one stroke in the shape's ink, enough for the colour reader", () => {
     const strokes = shapeToStrokes(BACKWARDS, "#c93a55", 4);
-    expect(strokes).toHaveLength(1);
-    expect(strokes[0].color).toBe("#c93a55");
-    expect(strokes[0].width).toBe(4);
-    expect(strokes[0].points).toEqual([
-      { x: 140, y: 180 },
-      { x: 100, y: 100 },
+    expect(strokes).toEqual([
+      {
+        color: "#c93a55",
+        width: 4,
+        points: [
+          { x: 140, y: 180 },
+          { x: 100, y: 100 },
+        ],
+      },
     ]);
   });
 });

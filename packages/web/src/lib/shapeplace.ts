@@ -9,6 +9,7 @@
 import type { Actor, CanvasContents, ShapeDrag, ShapeTool } from "@isocan/core";
 import {
   annotationProperties,
+  annotationTargetAt,
   annotationTargetFor,
   DRAWING_FILENAME,
   DRAWING_MIME,
@@ -41,20 +42,32 @@ export async function placeShape(
   const { drawingProperties } = await import("@isocan/core/colour");
   const born = drawingProperties(syntheticStrokes);
 
-  // Annotation detection: does this shape overlap an existing item?
+  // Annotation detection. A box or a circle is ABOUT what it covers, so it
+  // uses the Pen's share-of-box rule. An arrow is about what its TIP touches:
+  // the shaft is drawn across empty canvas on purpose, so its box would
+  // almost never clear the share test — and the region worth recording is
+  // the spot pointed at, not the whole sweep of the shaft.
   const open = useCanvasStore.getState();
   const canvas: CanvasContents | null =
     open.canvasId === canvasId ? open.canvas : null;
+  const items = canvas ? Object.values(canvas.items) : [];
   const inkBox = {
     x: bounds.minX,
     y: bounds.minY,
     width: bounds.maxX - bounds.minX,
     height: bounds.maxY - bounds.minY,
   };
+  const tip = { x: drag.x2, y: drag.y2 };
   const target =
-    canvas
-      ? annotationTargetFor(inkBox, Object.values(canvas.items))
-      : null;
+    shape === "arrow"
+      ? annotationTargetAt(tip, items)
+      : annotationTargetFor(inkBox, items);
+  // What `region` describes: for an arrow, a dot the size of the arrowhead at
+  // the tip; for everything else, the shape's own box.
+  const regionBox =
+    shape === "arrow"
+      ? { x: tip.x - strokeWidth * 2, y: tip.y - strokeWidth * 2, width: strokeWidth * 4, height: strokeWidth * 4 }
+      : inkBox;
 
   const destination = target
     ? { originGroupMode: creationDestination().originGroupMode }
@@ -93,7 +106,7 @@ export async function placeShape(
             ...born,
             ...annotationProperties(
               target.id,
-              regionOf(inkBox, target),
+              regionOf(regionBox, target),
             ),
           }
         : born,
@@ -106,9 +119,14 @@ export async function placeShape(
   if (useCanvasStore.getState().canvasId !== canvasId) return itemId;
   useUiStore.getState().select(itemId);
   if (target) {
+    // The pin sits where the markup is: at the tip for an arrow, above the
+    // shape for the rest.
+    const pin =
+      shape === "arrow"
+        ? { x: tip.x - target.x, y: tip.y - target.y }
+        : { x: (bounds.minX + bounds.maxX) / 2 - target.x, y: bounds.minY - target.y };
     useUiStore.getState().setPendingComment({
-      x: (bounds.minX + bounds.maxX) / 2 - target.x,
-      y: bounds.minY - target.y,
+      ...pin,
       anchorItemId: target.id,
       aboutItemId: itemId,
     });

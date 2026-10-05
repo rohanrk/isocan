@@ -3,6 +3,7 @@ import {
   annotationProperties,
   annotationRegion,
   annotationTarget,
+  annotationTargetAt,
   annotationTargetFor,
   annotationsOf,
   isAnnotation,
@@ -95,5 +96,34 @@ describe("annotationTargetFor", () => {
     const overlapping = { ...two, x: 150, y: 130, width: 300, height: 200 };
     const chosen = annotationTargetFor(ink(200, 180, 100, 80), [one, overlapping]);
     expect(chosen?.id).toBe("itm_2");
+  });
+});
+
+describe("annotationTargetAt — the arrow's rule", () => {
+  const items = seedState().canvas.items;
+  const one = items.itm_1!; // 100,100 200x150
+  const two = items.itm_2!; // 500,120 300x200
+
+  it("is decided by the tip alone, however far away the shaft started", () => {
+    // The same arrow would fail the share-of-box rule: its box is mostly canvas.
+    expect(annotationTargetAt({ x: 250, y: 200 }, [one, two])?.id).toBe("itm_1");
+    expect(annotationTargetFor(ink(-800, -800, 1050, 1000), [one, two])).toBeNull();
+  });
+
+  it("is null on bare canvas, and on an item's far side", () => {
+    expect(annotationTargetAt({ x: 1200, y: 1200 }, [one, two])).toBeNull();
+    expect(annotationTargetAt({ x: 301, y: 200 }, [one, two])).toBeNull();
+  });
+
+  it("takes the smallest item under the tip — the card, not the frame around it", () => {
+    const frame = { ...two, id: "itm_frame", x: 0, y: 0, width: 1000, height: 1000 };
+    expect(annotationTargetAt({ x: 250, y: 200 }, [frame, one])?.id).toBe("itm_1");
+    expect(annotationTargetAt({ x: 900, y: 900 }, [frame, one])?.id).toBe("itm_frame");
+  });
+
+  it("never points at ink — an arrow at a drawing is about what is under both", () => {
+    const drawing = { ...one, id: "itm_ink", properties: { kind: "drawing" } };
+    expect(annotationTargetAt({ x: 250, y: 200 }, [drawing])).toBeNull();
+    expect(annotationTargetAt({ x: 250, y: 200 }, [drawing, one])?.id).toBe("itm_1");
   });
 });

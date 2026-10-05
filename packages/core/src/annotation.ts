@@ -109,3 +109,30 @@ export function annotationTargetFor(
   }
   return best?.item ?? null;
 }
+
+/**
+ * Which item a POINT is about: the one under it. This is the rule for an
+ * arrow, whose meaning lives at its tip — the shaft is usually drawn across
+ * empty canvas, so `annotationTargetFor`'s share-of-box test would make an
+ * arrow pointing at a thing almost never count as being about it.
+ *
+ * When the point is inside several items (a card inside a frame), the
+ * smallest wins: it is the most specific thing you could have been pointing at.
+ */
+export function annotationTargetAt(
+  point: { x: number; y: number },
+  candidates: readonly Item[],
+): Item | null {
+  let best: Item | null = null;
+  for (const item of candidates) {
+    if (isDrawingItem(item)) continue; // ink about ink is not a thing
+    const inside =
+      point.x >= item.x &&
+      point.x <= item.x + item.width &&
+      point.y >= item.y &&
+      point.y <= item.y + item.height;
+    if (!inside) continue;
+    if (!best || item.width * item.height < best.width * best.height) best = item;
+  }
+  return best;
+}
