@@ -129,7 +129,7 @@ in topic `reference`. ⚠ marks what cannot be undone: ask first.
 - `wait` — park; `ask` — ask a person and stop; `notify` (or `say`) — a line in the Chat
 
 **Comments** (`protocol`, `practices`)
-- `comment ls|add|reply|edit|anchor|main|rm|clean` — threads; `main` is the Chat, `clean` clears it out (owner)
+- `comment ls|add|reply|edit|anchor|markup|main|rm|clean` — threads; `markup` fetches the sheet a comment carries; `main` is the Chat, `clean` clears it out (owner)
 - `command ls|show|add|rm` — slash commands a message can ask for
 
 **Items** (`items`)
@@ -919,15 +919,36 @@ isocan fit <items...>                  # grow items to the size their content wa
   references, and the thread is anchored to the TARGET, so `isocan wait --item
   <target>` hears it.
 
-  A drawing titled **Markup** is the same thing made deliberately: the person
-  opened the screen in a markup window, drew arrows, boxes and circles about
-  it, and landed all of them as ONE item — so expect several marks in one SVG,
-  and one `region` that covers the lot. Read it, act, `rm` it like any mark.
-  To attach a markup (or any item) to a comment of your own without spelling
-  it in the words: `isocan comment add "…" --item <screen> --about <markup>`,
-  or `--about` on `comment reply`. The anchor rides along in `items` too, as
-  it does when the app's composer attaches a markup — so `items` reads
-  `[screen, markup]` whichever surface posted it.
+  **A markup is a comment's, not the canvas's.** When a person opens a screen
+  in the markup window and draws arrows, boxes and circles about it, nothing
+  lands on the canvas: the sheet travels WITH their comment as `markup` —
+  `{ itemId, versionId, blobHash, width, height, marks, notes }` — and the
+  thread is anchored to the screen, so `isocan wait --item <screen>` hears it.
+  Read it with the words it came with:
+
+  ```
+  isocan comment markup <thread> out.svg   # the sheet: one SVG whose viewBox is the screen's own box
+  isocan get <item> screen.html            # what it was drawn on (--rev <versionId> for the one under the marks)
+  isocan comment markup <thread> --json    # itemId, versionId, width, height, marks, notes — no bytes
+  ```
+
+  **Notes are the instructions.** A shape can carry words — the person drew an
+  arrow and typed "make this the primary button" — and those arrive as
+  `notes`: `[{ n, shape, text, x, y }]`, numbered as the badges on the sheet
+  are, with `x,y` where the shape begins (an arrow's tail, a box's top-left).
+  `comment ls` prints them under the ✎ line as `1. make this the primary
+  button  (arrow at 120,340)`. Read the notes first; the sheet shows where.
+
+  Coordinates in the sheet are the screen's own: `0,0` is its top-left and
+  `width×height` its size when drawn, so an arrow at `x=640` points at the
+  right-hand side of a 1280-wide screen. There is nothing to `rm` afterwards —
+  the screen was never marked; answer the comment. To attach a sheet of your
+  own: `isocan comment reply <thread> "…" --markup sheet.svg` (drawn over the
+  thread's anchor, or `--on <item>`), or `--markup` with `comment add --item`.
+  To give a shape of yours a note, put a badge in the sheet —
+  `<g data-note="1" data-shape="arrow"><title>1. words</title><circle cx=".." cy=".."/></g>`
+  — and `--markup` reads it back into `notes`. `--about <ref...>` on either
+  carries other items in `items`, as before.
 - **Clear a mark once you have acted on it; leave a drawing alone.** Ink that
   annotates an item asked for something — when the new version answers it,
   `isocan rm <ink>` and say so in your reply, or the screen keeps wearing an X

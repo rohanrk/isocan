@@ -6,7 +6,9 @@ import type {
   Canvas,
   CanvasContents,
   Comment,
+  CommentMarkup,
   Item,
+  MarkupNote,
   ItemVersion,
   CanvasState,
 } from "./model.ts";
@@ -716,12 +718,54 @@ function toComment(c: NewComment, actor: Actor, ts: string): Comment {
   if (c.mentions?.length) comment.mentions = [...c.mentions];
   if (c.record) comment.record = c.record;
   if (c.items?.length) comment.items = [...c.items];
+  if (c.markup) comment.markup = validateMarkup(c.markup);
   const context = c.context;
   if (context) {
     validateContextManifest(context, context.canvasId);
     comment.context = structuredClone(context);
   }
   return comment;
+}
+
+/**
+ * A comment's markup, checked at the one door both surfaces write through:
+ * it names an item and a blob, and its sheet has a real size — the SVG's
+ * viewBox, which is what every coordinate in it means. The item is NOT
+ * required to exist: a markup outlives the screen it was drawn on the way a
+ * text anchor outlives its passage, and the window says so when it opens.
+ */
+function validateMarkup(markup: CommentMarkup): CommentMarkup {
+  for (const field of ["itemId", "blobHash", "mimeType", "filename"] as const) {
+    if (typeof markup[field] !== "string" || markup[field].length === 0) {
+      throw new OpValidationError("bad-op", `comment markup needs a ${field}`);
+    }
+  }
+  requireFinite({ width: markup.width, height: markup.height, size: markup.size }, "comment markup");
+  if (markup.width <= 0 || markup.height <= 0) throw new OpValidationError("bad-op", "comment markup needs a positive width and height");
+  const clean: CommentMarkup = {
+    itemId: markup.itemId,
+    blobHash: markup.blobHash,
+    mimeType: markup.mimeType,
+    filename: markup.filename,
+    size: markup.size,
+    width: markup.width,
+    height: markup.height,
+  };
+  if (typeof markup.versionId === "string" && markup.versionId) clean.versionId = markup.versionId;
+  if (typeof markup.marks === "number" && Number.isFinite(markup.marks)) clean.marks = markup.marks;
+  if (markup.notes !== undefined) {
+    if (!Array.isArray(markup.notes)) throw new OpValidationError("bad-op", "comment markup notes must be a list");
+    const notes: MarkupNote[] = [];
+    for (const note of markup.notes) {
+      // A note is words; one without any is not a note and is let go.
+      const text = typeof note?.text === "string" ? note.text.trim() : "";
+      if (!text) continue;
+      requireFinite({ n: note.n, x: note.x, y: note.y }, "comment markup note");
+      notes.push({ n: note.n, shape: typeof note.shape === "string" ? note.shape : "shape", text, x: note.x, y: note.y });
+    }
+    if (notes.length > 0) clean.notes = notes;
+  }
+  return clean;
 }
 
 /**

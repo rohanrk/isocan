@@ -128,6 +128,14 @@ interface GestureEvent extends UIEvent {
 // physical pinch (e.scale), so it needs no such constant.
 const PINCH_ZOOM_SENSITIVITY = 0.0055;
 
+/** An overlay that zooms its own content — the markup window — marks its
+ * root `data-owns-zoom`; every wheel and pinch inside it is its, not the
+ * canvas's. `e.target` can be a text node or the window itself, hence the
+ * guard. */
+function ownsItsZoom(target: EventTarget | null): boolean {
+  return !!(target as HTMLElement | null)?.closest?.("[data-owns-zoom]");
+}
+
 // The Pen, in SCREEN pixels: how wide a stroke looks under the nib, and how
 // far the pointer must travel before another sample is kept. Both are divided
 // by the zoom to reach world units, so ink drawn at 400% is as fine as it
@@ -292,9 +300,12 @@ export function CanvasViewport({ canvasId, actor, onPlanItem, currentNode }: { c
     }
 
     function onWheel(e: WheelEvent) {
+      const target = e.target as HTMLElement;
+      // The markup window zooms and scrolls its own paper (`useZoom`); a pinch
+      // over it must not move the canvas behind it as well.
+      if (ownsItsZoom(target)) return;
       stopGlide();
       freezePresentation();
-      const target = e.target as HTMLElement;
       if (e.ctrlKey || e.metaKey) {
         // Pinch (or ctrl+wheel): always own it, wherever the cursor is, so the
         // browser never page-zooms. Zoom the canvas at the cursor instead.
@@ -340,10 +351,12 @@ export function CanvasViewport({ canvasId, actor, onPlanItem, currentNode }: { c
     // the last event.
     let gestureScale = 1;
     function onGestureStart(e: GestureEvent) {
+      if (ownsItsZoom(e.target as HTMLElement)) return;
       e.preventDefault();
       gestureScale = e.scale;
     }
     function onGestureChange(e: GestureEvent) {
+      if (ownsItsZoom(e.target as HTMLElement)) return;
       e.preventDefault();
       const factor = e.scale / gestureScale;
       gestureScale = e.scale;

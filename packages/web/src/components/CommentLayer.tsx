@@ -4,8 +4,9 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, 
 import { Markdown } from "../lib/markdown.tsx";
 const DesignComment = lazy(() => import("./DesignComment.tsx").then((module) => ({ default: module.DesignComment })));
 const DesignComparisonComment = lazy(() => import("./DesignComparisonComment.tsx").then((module) => ({ default: module.DesignComparisonComment })));
-import type { Actor, CommentThread, NewComment } from "@isocan/core";
+import type { Actor, CommentMarkup, CommentThread, NewComment } from "@isocan/core";
 import { isMarkupTarget } from "@isocan/core";
+import { CommentMarkupChip, PendingMarkupChip } from "./CommentMarkupChip.tsx";
 import {
   collectItemRefCandidates,
   extractItemRefs,
@@ -19,6 +20,7 @@ import { type PendingComment, useUiStore } from "../stores/uiStore.ts";
 import { threadWorldPos, worldToScreen } from "../lib/viewport.ts";
 import { actorColorIn, useActorColors } from "../lib/colors.ts";
 import { mentionRoster, useMentionRoster } from "../lib/mentions.ts";
+import { isAgentActor, useActorKinds } from "../lib/actorkinds.ts";
 import { catapultToItem, useItemRefRoster } from "../lib/itemrefs.ts";
 import { rehypeChips } from "../lib/chips.ts";
 import { submitOnCmdEnter, submitOnEnter } from "../lib/submit.ts";
@@ -406,6 +408,7 @@ export function ThreadPopover({
               <div className="body">
                 {comment.designDecision ? <Suspense fallback={<p>Reading design decision…</p>}><DesignComparisonComment comment={comment} canvasId={canvasId} actor={actor} threadId={thread!.id} /></Suspense> : comment.design ? <Suspense fallback={<p>Reading design record…</p>}><DesignComment comment={comment} /></Suspense> : <><CommandChip body={comment.body} /><Markdown rehypePlugins={chips}>{withoutCommand(comment.body)}</Markdown></>}
               </div>
+              {comment.markup && <CommentMarkupChip canvasId={canvasId} markup={comment.markup} />}
               {comment.context && <ContextManifestView manifest={comment.context} comment={{ threadId: thread.id, commentId: comment.id }} />}
             </CommentFold>
             {/* The refusal is the control (#272): under the ask an agent's
@@ -509,6 +512,11 @@ function withAbout(comment: NewComment, aboutItemId?: string): NewComment {
   return { ...comment, items };
 }
 
+/** The markup drawn for this comment rides with it — never as an item. */
+function withMarkup(comment: NewComment, markup?: CommentMarkup): NewComment {
+  return markup ? { ...comment, markup } : comment;
+}
+
 export function ComposePopover({
   canvasId,
   actor,
@@ -525,6 +533,7 @@ export function ComposePopover({
   const viewport = useUiStore((s) => s.viewport);
   const canvas = useCanvasStore((s) => s.past?.canvas ?? s.canvas);
   const { candidates, peers } = useMentionRoster(actor.id);
+  const kinds = useActorKinds();
   const itemRoster = useItemRefRoster();
   const [body, setBody] = useState("");
   const context = useMessageContext(canvasId, messageContextRoots(canvas, body, [pending.aboutItemId, pending.anchorItemId].filter((id): id is string => Boolean(id))));
@@ -543,6 +552,54 @@ export function ComposePopover({
   const screen = worldToScreen(viewport, wx, wy);
   const { ref, style } = usePopoverPlacement(screen, 0, 0);
 
+  /**
+   * **Who this goes to is the last decision, not the first word.** The same
+   * draft posts two ways: as a comment for the people on the canvas, or as a
+   * summons to one agent — the agent's name added as a mention, so dispatch
+   * reads it exactly as a typed `@Name` would. One button per agent the
+   * roster knows (`isAgentActor`), marked rather than hidden when its gate is
+   * shut to this reader: the roster's own rule, argued in `MentionPeer.shut`.
+   * A body that already names the agent is sent as written.
+   */
+  const agents = peers.filter((p) => isAgentActor(kinds, p.id));
+  const post = async (summon?: { id: string; name: string }) => {
+    const trimmed = body.trim();
+    if (!trimmed) return;
+    const already = summon ? makeComment(trimmed).mentions?.includes(summon.id) : true;
+    const text = summon && !already ? `@${summon.name} ${trimmed}` : trimmed;
+    await sending.submit(() => sendEchoedResult(canvasId, actor, {
+      type: "thread.create",
+      threadId: newThreadId(),
+      x: pending.x,
+      y: pending.y,
+      anchorItemId: pending.anchorItemId,
+      ...(pending.textAnchor ? { textAnchor: pending.textAnchor } : {}),
+      comment: withMessageContext(withMarkup(withAbout(makeComment(text), pending.aboutItemId), pending.markup), context.request),
+    }), () => { onSent?.(); if (useUiStore.getState().pendingComment === pending) useUiStore.getState().setPendingComment(null); });
+  };
+
+  // The pen: only over something with a face to draw on (a screen, a site,
+  // an image — `isMarkupTarget`), and only when this draft is anchored to it.
+  const anchored = pending.anchorItemId ? canvas?.items[pending.anchorItemId] : undefined;
+  const canMarkUp = !!anchored && isMarkupTarget(anchored);
+  const openPen = () => {
+    const itemId = pending.anchorItemId!;
+    void import("./MarkupModal.tsx").then((m) =>
+      m.openMarkup({
+        canvasId,
+        actor,
+        itemId,
+        // Committed back to THIS draft — uploaded now, posted with the
+        // comment, never an item on the canvas. The draft survives the trip:
+        // the composer's key ignores `markup`, so this is the same instance.
+        onDone: (markup) => {
+          const ui = useUiStore.getState();
+          if (ui.pendingComment?.anchorItemId === itemId) ui.setPendingComment({ ...ui.pendingComment, markup });
+        },
+      }),
+    );
+  };
+
   return (
     <div
       ref={ref}
@@ -554,41 +611,59 @@ export function ComposePopover({
         onKeyDown={submitOnCmdEnter}
         onSubmit={async (e) => {
           e.preventDefault();
-          const trimmed = body.trim();
-          if (!trimmed) return;
-          await sending.submit(() => sendEchoedResult(canvasId, actor, {
-            type: "thread.create",
-            threadId: newThreadId(),
-            x: pending.x,
-            y: pending.y,
-            anchorItemId: pending.anchorItemId,
-            ...(pending.textAnchor ? { textAnchor: pending.textAnchor } : {}),
-            comment: withMessageContext(withAbout(makeComment(trimmed), pending.aboutItemId), context.request),
-          }), () => { onSent?.(); if (useUiStore.getState().pendingComment === pending) useUiStore.getState().setPendingComment(null); });
+          await post();
         }}
         style={{ display: "block" }}
       >
         {pending.textAnchor && <blockquote className="thread-text-anchor">{pending.textAnchor.quote}</blockquote>}
         <MessageContextPreview context={context} />
         {sending.error && <p role="alert">{sending.error}</p>}
-        <MentionField
-          multiline
-          autoFocus
-          placeholder={
-            pending.aboutItemId
-              ? "What should happen here?"
-              : pending.anchorItemId
-                ? "Comment on this item…"
-                : "Comment here…"
-          }
-          value={body}
-          onChange={setBody}
-          candidates={candidates}
-          peers={peers}
-          itemCandidates={itemRoster.candidates}
-          items={itemRoster.entries}
-        />
-        <div className="row">
+        <div className="compose-field">
+          <MentionField
+            multiline
+            autoFocus
+            placeholder={
+              pending.aboutItemId || pending.markup
+                ? "What should happen here?"
+                : pending.anchorItemId
+                  ? "Comment on this item…"
+                  : "Comment here…"
+            }
+            value={body}
+            onChange={setBody}
+            candidates={candidates}
+            peers={peers}
+            itemCandidates={itemRoster.candidates}
+            items={itemRoster.entries}
+          />
+          {canMarkUp && (
+            <button
+              type="button"
+              className={`compose-pen${pending.markup ? " has-markup" : ""}`}
+              title={pending.markup ? "Mark up again — draw over the screen; replaces the attached marks" : "Mark up — draw over the screen; the marks go with this comment"}
+              aria-label={pending.markup ? "Mark up again" : "Mark up"}
+              onClick={openPen}
+            >
+              {PEN}
+            </button>
+          )}
+        </div>
+        {pending.markup && (
+          <div className="row">
+            <PendingMarkupChip
+              canvasId={canvasId}
+              markup={pending.markup}
+              onDrop={() => {
+                const ui = useUiStore.getState();
+                if (ui.pendingComment === pending) {
+                  const { markup: _dropped, ...rest } = pending;
+                  ui.setPendingComment(rest);
+                }
+              }}
+            />
+          </div>
+        )}
+        <div className="row compose-send">
           <button
             type="button"
             className="btn"
@@ -596,41 +671,36 @@ export function ComposePopover({
           >
             Cancel
           </button>
-          {/* A markup made FOR this comment: draw on the anchored screen and
-              the one drawing that lands is attached here, not sent as a
-              comment of its own. The draft survives the trip — the composer's
-              key ignores `aboutItemId`, so this is the same instance after. */}
-          {pending.anchorItemId && canvas?.items[pending.anchorItemId] && isMarkupTarget(canvas.items[pending.anchorItemId]!) && (
-            <button
-              type="button"
-              className="btn"
-              title="Draw on the screen; the markup is attached to this comment"
-              onClick={() => {
-                const itemId = pending.anchorItemId!;
-                void import("./MarkupModal.tsx").then((m) =>
-                  m.openMarkup({
-                    canvasId,
-                    actor,
-                    itemId,
-                    onDone: (drawingId) => {
-                      const ui = useUiStore.getState();
-                      if (ui.pendingComment?.anchorItemId === itemId) ui.setPendingComment({ ...ui.pendingComment, aboutItemId: drawingId });
-                    },
-                  }),
-                );
-              }}
-            >
-              {pending.aboutItemId ? "Mark up again" : "Mark up"}
-            </button>
-          )}
-          <button className="btn primary" type="submit" title={`Comment (${shortcut("⏎")})`} disabled={!body.trim() || sending.disabled}>
+          <span className="spacer" />
+          <button className="btn primary" type="submit" title={`Comment — for the people here (${shortcut("⏎")})`} disabled={!body.trim() || sending.disabled}>
             Comment
           </button>
+          {agents.map((agent) => (
+            <button
+              key={agent.id}
+              type="button"
+              className="btn compose-summon"
+              title={agent.shut ? `${agent.name} ${agent.note ?? "won't answer you"}` : `Send to ${agent.name} — posts with @${agent.name}, so the agent wakes on it`}
+              disabled={!body.trim() || sending.disabled || agent.shut}
+              onClick={() => void post(agent)}
+            >
+              → @{agent.name}
+              {!agent.online && !agent.shut && <small> not here yet</small>}
+            </button>
+          ))}
         </div>
       </form>
     </div>
   );
 }
+
+/** The pen, as the chip under a screen draws it. */
+const PEN = (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M3 13l1.5-4.5L11 2l3 3-6.5 6.5L3 13z" />
+    <path d="M9.5 3.5l3 3" />
+  </svg>
+);
 
 /** Re-exported so the surfaces that already import it from here keep
  * working — the RULE now lives in core, where the CLI can read it too. */

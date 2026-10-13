@@ -287,7 +287,7 @@ export const ACTIONS: readonly Action[] = [
   {
     id: "mark-up",
     name: "Mark up this",
-    hint: "draw on the selected screen and land every mark as one annotation",
+    hint: "draw on the selected screen; the marks go with a comment, not onto the canvas",
     group: "Canvas",
     writes: true,
     available: (ctx) => {

@@ -234,6 +234,56 @@ export interface Item {
 }
 
 /**
+ * **A markup that belongs to a comment, not to the canvas.**
+ *
+ * Marks drawn over one item in the item's OWN coordinates (0,0 its top-left,
+ * `width`×`height` its size when drawn), stored as one SVG blob and carried
+ * by the comment that says what they mean. Nothing lands on the canvas: the
+ * screen stays clean, the comment opens a window that shows the screen with
+ * the marks over it, and an agent reads the same artifact from the comment
+ * (`isocan comment markup`). Contrast the Pen, whose ink IS an item.
+ *
+ * `blobHash` + `mimeType` + `filename` is deliberately the shape every
+ * version face wears: `blobsNamedBy` walks the state for exactly that triple,
+ * so GC keeps the bytes and an export carries them without either learning
+ * the word "markup".
+ */
+export interface CommentMarkup {
+  /** The item the marks are about — usually the thread's anchor. */
+  itemId: string;
+  /** The version that was on top when it was drawn: provenance, like a
+   * text anchor's. The window shows this version when it still exists. */
+  versionId?: string;
+  blobHash: string;
+  mimeType: string;
+  filename: string;
+  size: number;
+  /** The item's size when drawn — the SVG's viewBox, and what the marks'
+   * coordinates mean. */
+  width: number;
+  height: number;
+  /** How many marks, for a chip that says "3 marks" without fetching bytes. */
+  marks?: number;
+  /** The words attached to particular shapes, numbered as the sheet's badges
+   * are — "① make this primary" beside the arrow that points at the button.
+   * Here as well as in the SVG so a thread and `comment ls` list them
+   * without fetching the sheet. */
+  notes?: MarkupNote[];
+}
+
+/** One numbered note on a markup: what a shape means, said in words. */
+export interface MarkupNote {
+  /** The badge number, 1-based, in the order the shapes were drawn. */
+  n: number;
+  /** The shape it belongs to — `arrow`, `rect`, `ellipse`, `line`. */
+  shape: string;
+  text: string;
+  /** Where the badge sits, in the item's own coordinates. */
+  x: number;
+  y: number;
+}
+
+/**
  * One message in a thread. The `design*` fields are writer-minted facts that an ordinary
  * comment write cannot supply; most comments carry none of them.
  */
@@ -273,6 +323,8 @@ export interface Comment {
   /** Item ids #-referenced in the body, resolved at authoring time against
    * the live items the author could see. Absent on older comments. */
   items?: string[];
+  /** Marks drawn over an item FOR this comment; see `CommentMarkup`. */
+  markup?: CommentMarkup;
   /** Writer-resolved request scope, retained independently of live item versions. */
   context?: import("./canvas-group-context.ts").ContextManifest;
   createdAt: string;

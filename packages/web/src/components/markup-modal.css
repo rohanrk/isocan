@@ -33,11 +33,14 @@
 
 .markup-stage {
   flex: 1 1 auto; min-height: 0;
-  display: flex; align-items: center; justify-content: center;
-  padding: 12px; overflow: hidden;
+  display: flex;
+  padding: 12px; overflow: auto; overscroll-behavior: contain;
   background: var(--ground-under);
 }
-.markup-paper { position: relative; flex: none; box-shadow: var(--shadow-pop); background: var(--card); }
+/* `margin: auto` centres the paper while it fits and lets every edge be
+   scrolled to once it does not — `align-items: center` would clip the
+   top-left of an overflowing child. */
+.markup-paper { position: relative; flex: none; margin: auto; box-shadow: var(--shadow-pop); background: var(--card); }
 .markup-face { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; overflow: hidden; }
 .markup-face > * { width: 100%; height: 100%; }
 .markup-overlay { position: absolute; left: 0; top: 0; touch-action: none; cursor: crosshair; }
@@ -50,3 +53,73 @@
 .markup-count { font-size: 13px; color: var(--ink-muted); }
 .markup-error { color: var(--danger); font-size: 13px; margin: 0; }
 .markup-empty { padding: 24px; color: var(--ink-muted); }
+
+/* The viewer: a comment's sheet laid over its screen, read-only. */
+.markup-sheet { pointer-events: none; cursor: default; user-select: none; }
+.markup-face-gone { background: repeating-linear-gradient(45deg, var(--ground-under), var(--ground-under) 12px, var(--card) 12px, var(--card) 24px); }
+.markup-note { margin: 0; padding: 8px 14px; font-size: 13px; color: var(--ink-muted); border-bottom: 1px solid var(--line); flex: none; }
+
+/* The chip a comment wears when it carries a markup, and the composer's
+   "attached" pill. One look in both places: it is the same thing. */
+.comment-markup {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 6px; padding: 4px 10px 4px 6px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--card); color: var(--ink); font: inherit; font-size: 12px;
+  cursor: pointer; max-width: 100%;
+}
+.comment-markup:hover { background: var(--chip-hover); border-color: var(--ink-muted); }
+.comment-markup .glyph { display: inline-flex; width: 16px; height: 16px; color: var(--accent-text); }
+.comment-markup .glyph svg { width: 100%; height: 100%; }
+.comment-markup b { font-weight: 600; }
+.comment-markup .on { color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comment-markup-drop {
+  border: none; background: transparent; color: var(--ink-muted); cursor: pointer;
+  padding: 0 0 0 4px; font: inherit; line-height: 1;
+}
+.comment-markup-drop:hover { color: var(--danger); }
+
+/* Notes: a badge beside a labelled shape, the field that asks for its words,
+   and the numbered list the sheet, the thread and the pill all show. */
+.markup-badge { cursor: pointer; }
+.markup-badge text { font-family: system-ui, sans-serif; pointer-events: none; user-select: none; }
+.markup-badge:hover circle { stroke: var(--ink); }
+.markup-label {
+  position: absolute; z-index: 2; width: min(300px, 70vw);
+  animation: markup-label-in 120ms ease-out;
+}
+.markup-label input {
+  width: 100%; box-sizing: border-box; padding: 7px 10px; font: inherit; font-size: 13px;
+  color: var(--ink); background: var(--card); border: 1px solid var(--accent-text); border-radius: 8px;
+  box-shadow: var(--shadow-pop); outline: none;
+}
+.markup-label input::placeholder { color: var(--ink-muted); }
+@keyframes markup-label-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+.markup-notes {
+  list-style: none; margin: 0; padding: 8px 14px; display: flex; flex-direction: column; gap: 4px;
+  font-size: 13px; flex: none;
+}
+.markup-card > .markup-notes { border-top: 1px solid var(--line); max-height: 140px; overflow: auto; }
+.markup-notes li { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.markup-notes-n {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  background: var(--accent-text); color: var(--card); align-self: center;
+}
+.markup-notes-text { color: var(--ink); overflow-wrap: anywhere; }
+.markup-notes-shape { margin-left: auto; flex: none; color: var(--ink-muted); font-size: 11px; text-transform: lowercase; }
+.comment-markup-block { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.comment-markup-block .markup-notes { padding: 0 2px; }
+
+/* Zoom: − 100% + Fit. The percentage is a button: fitted, it goes to 100%;
+   zoomed, back to fit. */
+.markup-zoom .markup-tool { font-size: 16px; line-height: 1; }
+.markup-zoom .markup-tool:disabled { opacity: 0.35; cursor: default; }
+.markup-zoom-value {
+  min-width: 46px; padding: 0 6px; height: 26px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--ink); font: inherit; font-size: 12px;
+  font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.markup-zoom-value:hover { background: var(--chip-hover); }
+.markup-zoom-fit { width: auto !important; padding: 0 8px; font-size: 12px !important; }

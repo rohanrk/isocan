@@ -25,6 +25,7 @@ import { packageBin, packagePath, packageRoot } from "@isocan/core/packageroot";
 import { Command, Option } from "commander";
 import type {
   AgentRules,
+  CommentMarkup,
   EnrolledAgent,
   RcPolicy,
   Persona,
@@ -165,6 +166,10 @@ import {
   annotationsOf,
   distributeMoves,
   drawingViewBox,
+  isMarkupTarget,
+  MARKUP_FILENAME,
+  markupSheetMarks,
+  markupSheetNotes,
   SHORTCUTS,
   formatMoves,
   inScope,
@@ -11152,6 +11157,57 @@ async function quotedCommentAnchor(ctx: Ctx, canvasId: string, item: Item, quote
   return makeTextAnchor(doc.text, doc, quoteRange(doc.text, quote, occurrence === undefined ? undefined : Number(occurrence)));
 }
 
+/**
+ * **A markup from a file, attached the way the window attaches one.** The
+ * SVG is read, uploaded, and described against the item it is about — the
+ * item's size is the sheet's viewBox, so marks drawn in the item's own
+ * coordinates land where they were meant. The sheet is the comment's: it
+ * never becomes an item, which is the whole point of it (the screen stays
+ * clean, the comment carries the ask). `isocan comment markup` reads it back.
+ */
+async function markupFromFile(ctx: Ctx, canvasId: string, item: Item, file: string): Promise<CommentMarkup> {
+  if (!isMarkupTarget(item)) throw new Error(`${item.id} cannot be marked up — a markup goes on a screen, a site or an image`);
+  const svg = await fs.readFile(file, "utf8");
+  if (!/<svg[\s>]/.test(svg)) throw new Error(`${file} is not an SVG — a markup is one SVG sheet in the item's own coordinates`);
+  const upload = await ctx.client.uploadBlob(canvasId, Buffer.from(svg, "utf8"), DRAWING_MIME, MARKUP_FILENAME);
+  const box = drawingViewBox(svg);
+  // The sheet's own viewBox when it has one, the item's box otherwise — so a
+  // sheet exported from the app round-trips exactly, and a hand-written one
+  // is read against the thing it was written about.
+  const width = box ? box.maxX - box.minX : item.width;
+  const height = box ? box.maxY - box.minY : item.height;
+  const notes = markupSheetNotes(svg);
+  return {
+    itemId: item.id,
+    versionId: item.currentVersionId,
+    blobHash: upload.blobHash,
+    mimeType: DRAWING_MIME,
+    filename: MARKUP_FILENAME,
+    size: upload.size,
+    width: Math.max(1, Math.round(width)),
+    height: Math.max(1, Math.round(height)),
+    marks: markupSheetMarks(svg),
+    ...(notes.length > 0 ? { notes } : {}),
+  };
+}
+
+/** The one line `comment ls` and `wait` print under a comment that carries
+ * a markup — what it is on, how much, and the verb that fetches it. */
+function markupLine(snapshot: CanvasSnapshotResponse, threadId: string, commentId: string, markup: CommentMarkup): string {
+  const on = snapshot.canvas.items[markup.itemId]?.title ?? markup.itemId;
+  const n = markup.marks ?? 0;
+  const notes = markup.notes?.length ?? 0;
+  const what = (n > 0 ? `${n} mark${n === 1 ? "" : "s"}` : "a markup") + (notes > 0 ? `, ${notes} note${notes === 1 ? "" : "s"}` : "");
+  return `✎ ${what} on "${on}" (${markup.width}×${markup.height}) — isocan comment markup ${threadId} ${commentId} out.svg`;
+}
+
+/** Under the ✎ line: each note the markup carries, numbered as the sheet's
+ * badges are, with the shape it labels and where that shape begins — so an
+ * agent reads "1. make this primary (arrow at 120,340)" without the bytes. */
+function markupNoteLines(markup: CommentMarkup): string[] {
+  return (markup.notes ?? []).map((note) => `${note.n}. ${note.text}  (${note.shape} at ${Math.round(note.x)},${Math.round(note.y)})`);
+}
+
 comment
   .command("add <text>")
   .description("Start a thread — anchored to an item or freestanding at --at")
@@ -11160,10 +11216,11 @@ comment
   .option("--occurrence <number>", "which matching quote, counted from 1")
   .option("--at <x,y>", "freestanding at world coordinates")
   .option("--in <group>", "attach this group and its complete subtree as frozen context")
-  .option("--about <ref...>", "items this comment is about — a markup, say — carried in its item references")
+  .option("--about <ref...>", "items this comment is about, carried in its item references")
+  .option("--markup <file.svg>", "attach a markup sheet drawn over --item, in the item's own coordinates (see `comment markup`)")
   .option("--include-excluded", "explicitly include excluded context in this request")
   .action(
-    run(async (text: string, opts: { item?: string; at?: string; quote?: string; occurrence?: string; in?: string; about?: string[]; includeExcluded?: boolean }, cmd: Command) => {
+    run(async (text: string, opts: { item?: string; at?: string; quote?: string; occurrence?: string; in?: string; about?: string[]; markup?: string; includeExcluded?: boolean }, cmd: Command) => {
       const ctx = await ctxOf(cmd);
       const { canvas: p, snapshot } = await canvasAndSnapshot(ctx, { create: true });
       if (!opts.item && !opts.at) throw new Error("pass --item <item> or --at <x,y>");
@@ -11184,10 +11241,12 @@ comment
       }
       const threadId = newThreadId();
       // `--about` on an anchored thread carries the anchor too, as the app's
-      // composer does: an agent reading `items` sees the screen AND the
-      // markup, whichever surface posted it.
+      // composer does: an agent reading `items` sees the screen AND whatever
+      // else the comment is about, whichever surface posted it.
       const about = opts.about && anchorItemId ? Array.from(new Set([anchorItemId, ...opts.about])) : opts.about;
-      const first = await newComment(ctx, p.id, snapshot, text, { items: about, in: opts.in, includeExcluded: opts.includeExcluded });
+      if (opts.markup && !anchorItemId) throw new Error("--markup needs --item: a markup is drawn over something");
+      const markup = opts.markup ? await markupFromFile(ctx, p.id, snapshot.canvas.items[anchorItemId!]!, opts.markup) : undefined;
+      const first = { ...(await newComment(ctx, p.id, snapshot, text, { items: about, in: opts.in, includeExcluded: opts.includeExcluded })), ...(markup ? { markup } : {}) };
       const receipt = await sendOp(ctx, p.id, {
         type: "thread.create",
         threadId,
@@ -11208,14 +11267,22 @@ comment
   .command("reply <thread> <text>")
   .description("Reply to a thread")
   .option("--in <group>", "attach this group and its complete subtree as frozen context")
-  .option("--about <ref...>", "items this reply is about — a markup, say — carried in its item references")
+  .option("--about <ref...>", "items this reply is about, carried in its item references")
+  .option("--markup <file.svg>", "attach a markup sheet drawn over the thread's anchor (or --on <item>), in its own coordinates")
+  .option("--on <item>", "what --markup is drawn over, when not the thread's anchor")
   .option("--include-excluded", "explicitly include excluded context in this request")
   .action(
-    run(async (threadRef: string, text: string, opts: { in?: string; about?: string[]; includeExcluded?: boolean }, cmd: Command) => {
+    run(async (threadRef: string, text: string, opts: { in?: string; about?: string[]; markup?: string; on?: string; includeExcluded?: boolean }, cmd: Command) => {
       const ctx = await ctxOf(cmd);
       const { canvas: p, snapshot } = await canvasAndSnapshot(ctx);
       const thread = resolveThread(snapshot, threadRef);
-      const comment = await newComment(ctx, p.id, snapshot, text, { items: opts.about, in: opts.in, includeExcluded: opts.includeExcluded });
+      let markup: CommentMarkup | undefined;
+      if (opts.markup) {
+        const target = opts.on ? resolveItem(snapshot, opts.on) : thread.anchorItemId ? snapshot.canvas.items[thread.anchorItemId] : undefined;
+        if (!target) throw new Error("--markup needs something to be drawn over: this thread is freestanding, so pass --on <item>");
+        markup = await markupFromFile(ctx, p.id, target, opts.markup);
+      }
+      const comment = { ...(await newComment(ctx, p.id, snapshot, text, { items: opts.about, in: opts.in, includeExcluded: opts.includeExcluded })), ...(markup ? { markup } : {}) };
       const receipt = await sendOp(ctx, p.id, {
         type: "thread.reply",
         threadId: thread.id,
@@ -11232,6 +11299,54 @@ comment
       if (await readSessionFile(ctx.home, ctx.actor.id)) {
         console.log(`  → now park: isocan wait --json --timeout <sec>`);
       }
+    }),
+  );
+
+comment
+  .command("markup <thread> [comment] [out]")
+  .description("Fetch the markup a comment carries — the SVG sheet drawn over its screen — to a file, or to stdout")
+  .addHelpText(
+    "after",
+    `
+A markup is marks drawn over ONE item in the item's own coordinates: the
+sheet's viewBox is the item's box, 0,0 its top-left. Nothing is on the
+canvas — the comment carries it. Without [comment], the thread's latest
+comment that has one. \`--json\` prints what it is on, which version was
+under it, how big the sheet is, and its notes — the words attached to
+particular shapes ("1. make this primary", with the shape and where it
+begins) — without the bytes. The sheet shows the same notes as numbered
+badges.
+
+  isocan comment markup thr_abc out.svg          # the sheet
+  isocan get <item> screen.html                  # what it was drawn on
+  isocan comment markup thr_abc --json           # itemId, versionId, width, height, marks, notes`,
+  )
+  .action(
+    run(async (threadRef: string, commentRef: string | undefined, out: string | undefined, _opts: unknown, cmd: Command) => {
+      const ctx = await ctxOf(cmd);
+      const { canvas: p, snapshot } = await canvasAndSnapshot(ctx);
+      const thread = resolveThread(snapshot, threadRef);
+      // Two optional positionals: `markup <thread> out.svg` reads the file
+      // name as the comment unless we notice it is not one.
+      let comment = commentRef ? thread.comments.find((c) => c.id === commentRef) : undefined;
+      if (commentRef && !comment && out === undefined && !thread.comments.some((c) => c.id === commentRef)) {
+        out = commentRef;
+        commentRef = undefined;
+      }
+      if (commentRef && !comment) throw new Error(`no comment ${commentRef} in ${thread.id}`);
+      if (!comment) comment = [...thread.comments].reverse().find((c) => c.markup);
+      if (!comment?.markup) throw new Error(commentRef ? `${commentRef} carries no markup` : `nothing in ${thread.id} carries a markup`);
+      const markup = comment.markup;
+      const on = snapshot.canvas.items[markup.itemId];
+      if (ctx.json && !out) return printJson({ threadId: thread.id, commentId: comment.id, ...markup, itemTitle: on?.title ?? null, itemOnCanvas: !!on });
+      const data = await ctx.client.downloadBlob(p.id, markup.blobHash);
+      if (out) {
+        await fs.writeFile(out, data);
+        if (ctx.json) return printJson({ threadId: thread.id, commentId: comment.id, ...markup, path: out, bytes: data.length });
+        console.log(`wrote ${out} (${formatBytes(data.length)} — ${markupLine(snapshot, thread.id, comment.id, markup).split(" — ")[0]})`);
+        return;
+      }
+      process.stdout.write(data);
     }),
   );
 
@@ -11353,6 +11468,10 @@ comment
         for (const c of t.comments) {
           console.log(`  ${actorNameIn(snapshot.names, c.author)} · ${c.createdAt} · ${c.id}`);
           console.log(`    ${c.body}`);
+          if (c.markup) {
+            console.log(`    ${markupLine(snapshot, t.id, c.id, c.markup)}`);
+            for (const line of markupNoteLines(c.markup)) console.log(`      ${line}`);
+          }
         }
       }
     }),

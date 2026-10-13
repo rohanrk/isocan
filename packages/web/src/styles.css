@@ -3722,6 +3722,28 @@ button.mt-card:hover { border-color: var(--accent); }
 /* Dragging the textarea taller than the clamped popover scrolls, not spills. */
 .compose-popover form { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .compose-popover .row { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
+/* The pen lives in the draft's corner: over a screen, a markup is one
+   click from the words it will travel with. */
+.compose-field { position: relative; }
+/* Both layers of the field — the textarea and the mirror behind it that
+   paints the mentions — or the highlights drift from the words. */
+.compose-field .mention-field textarea,
+.compose-field .mention-field .mention-backdrop { padding-right: 34px !important; }
+.compose-pen {
+  position: absolute; right: 6px; top: 6px;
+  width: 26px; height: 26px; padding: 5px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--card); color: var(--ink-muted); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.compose-pen svg { width: 100%; height: 100%; }
+.compose-pen:hover { color: var(--accent-text); border-color: var(--accent-text); background: var(--accent-wash); }
+.compose-pen.has-markup { color: var(--accent-text); background: var(--accent-wash); border-color: transparent; }
+/* Who it goes to: people (Comment) or one agent (→ @Name). Wraps when a
+   canvas has several agents rather than pushing Cancel off the edge. */
+.compose-send { flex-wrap: wrap; align-items: center; }
+.compose-send .spacer { flex: 1 1 auto; }
+.compose-summon small { font-size: 10.5px; color: var(--ink-muted); margin-left: 4px; }
 .page-note { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--ink-muted); }
 /* A refusal needs more than one line: what happened, and what to do about it. */
 .page-note-stack { flex-direction: column; gap: 8px; text-align: center; padding: 0 24px; }

@@ -1376,7 +1376,7 @@ function ItemViewInner({
               {!resize && canEdit && isMarkupTarget(item) && (
                 <button
                   className={`fullscreen-btn${spellItOut ? "" : " compact"}`}
-                  data-tip={spellItOut ? "Draw on it, land one annotation" : "Mark up — draw on it, land one annotation"}
+                  data-tip={spellItOut ? "Draw on it; the marks go with a comment" : "Mark up — draw on it; the marks go with a comment"}
                   aria-label="Mark up"
                   onPointerDown={stop}
                   onClick={(e) => {

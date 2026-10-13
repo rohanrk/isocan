@@ -109,6 +109,7 @@ export const DEEP: readonly DeepFile[] = [
   { file: "packages/cli/test/identity.test.ts", secs: 23 },
   { file: "packages/cli/test/daemon-takeover.test.ts", secs: 22 },
   { file: "packages/cli/test/dualface.test.ts", secs: 20 },
+  { file: "packages/cli/test/comment-markup.test.ts", secs: 10 },
   { file: "packages/cli/test/group.test.ts", secs: 21 },
   { file: "packages/cli/test/export.test.ts", secs: 17 },
   { file: "packages/cli/test/personal-context.test.ts", secs: 17 },

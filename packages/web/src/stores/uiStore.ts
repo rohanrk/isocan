@@ -1,4 +1,4 @@
-import type { CursorSignal, GroupAim, GroupBox, TextAnchor } from "@isocan/core";
+import type { CommentMarkup, CursorSignal, GroupAim, GroupBox, TextAnchor } from "@isocan/core";
 import { create } from "zustand";
 import { shallow } from "zustand/shallow";
 import type { AddKind, InkPoint, InkStroke, TextFace, TextStyle, Paper, TextColourValue, ShapeTool, ShapeDrag } from "@isocan/core";
@@ -100,6 +100,9 @@ export interface PendingComment {
   /** An annotation this comment is about, carried into the posted comment's
    * item references so an agent can find the ink that prompted it. */
   aboutItemId?: string;
+  /** A markup drawn FOR this comment in the markup window — already uploaded,
+   * posted with the comment, never an item on the canvas. */
+  markup?: CommentMarkup;
 }
 
 interface UiStore {

@@ -69,6 +69,10 @@ export interface NewComment {
   record?: true | import("./roll.ts").RollKind;
   /** Resolved #item-references (item ids); see Comment.items. */
   items?: string[];
+  /** Marks drawn over an item for this comment, already uploaded as a blob;
+   * see `CommentMarkup`. Public: any writer may attach one, as any writer may
+   * attach item references — it confers nothing. */
+  markup?: import("./model.ts").CommentMarkup;
   /** Public attachment intent; the home resolves it at one canvas revision. */
   contextRequest?: import("./canvas-group-context.ts").ContextRequest;
   /** Canonical writer output only; public callers cannot supply retained metadata. */

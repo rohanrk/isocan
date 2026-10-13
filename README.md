@@ -210,19 +210,33 @@ That parity is a house rule with a test behind it: see AGENTS.md.
   being a comment an agent can act on. The choice is remembered per browser;
   Freehand switches back. From the CLI the same thing is
   `isocan add shape.svg --drawing`.
-- **Mark up**: when a markup is more than one breath — six arrows and two
-  boxes about one screen — open the screen in the markup window instead
-  (**Mark up** under a selected screen or image, in its right-click menu, or
-  from ⌘K). It renders the screen at a size you can aim at, you draw on it
-  with the same five tools and inks, nothing reaches the canvas until **Add
-  markup**, and then everything lands as ONE drawing item titled *Markup*
-  that annotates the screen with the region it covers. The comment composer
-  opens about it, as after the Pen. Or go the other way round: while writing
-  a comment on a screen, press **Mark up** in the composer, draw, **Attach to
-  comment** — your draft survives, and the markup is in the comment's item
-  references, so the agent that reads the comment reads the markup. From the
-  CLI the same attachment is `isocan comment add "…" --item <screen> --about
-  <markup>`.
+- **Mark up**: start a comment on a screen, a site or an image and the draft
+  has a **pen** in its corner. Click it and the screen opens in the markup
+  window at a size you can aim at — pinch, ⌘-wheel or − % + zoom the
+  *screen*, not the canvas behind it (⌘0 fits it again) — draw with the
+  same five tools and inks.
+  Finish an arrow or a box and a small field asks what it means — optional,
+  Enter keeps it, Esc leaves the shape a shape — and the shape wears a
+  numbered badge (click it to change the words). **Add to comment** commits
+  the marks back to the draft, where they sit as a pill (*2 marks · 1 note
+  attached*, the notes listed under it, click to preview, ✕ to drop, pen
+  again to redraw). **Nothing lands on the canvas** — the sheet goes with the
+  comment, and the screen stays clean. Then decide who it is for:
+  **Comment** posts it for the people here; **→ @Hiro** (one button per
+  agent on the canvas) posts the same words with the agent named, so it
+  wakes on it — an agent whose gate is shut to you is shown, disabled, with
+  why. The posted comment wears a chip — *2 marks · 1 note on Checkout* —
+  with the notes under it (*① Make this the primary button*), and the chip
+  opens the same window read-only, the marks over the screen (over the
+  version they were drawn on, when it is still in the stack). The same
+  window also opens from **Mark up** under a selected screen, its right-click
+  menu or ⌘K, and lands you in that composer with the marks attached. An
+  agent reads the identical thing from the comment: `isocan comment markup
+  <thread> out.svg` is the sheet, in the screen's own coordinates, and
+  `--json` is what it is on, how big, and its `notes` — which `comment ls`
+  also prints under the comment, each with its shape and where it begins. To
+  attach one from the CLI: `isocan comment reply <thread> "…" --markup
+  sheet.svg`.
 - **Text (`T`)**: click and type words straight onto the canvas — a chromeless
   node that is a real `.md`. The bar over the words picks a size step (S/M/L/XL,
   each readable twice as far out), a face (sans, mono, serif, handwriting), a

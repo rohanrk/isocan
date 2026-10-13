@@ -16,7 +16,7 @@
  * app can never disagree about what the blob means.
  */
 
-import type { Item } from "./model.ts";
+import type { Item, MarkupNote } from "./model.ts";
 
 export const DRAWING_MIME = "image/svg+xml";
 export const DRAWING_FILENAME = "sketch.svg";
@@ -398,22 +398,105 @@ export function shapeToStrokes(drag: ShapeDrag, color: string, strokeWidth: numb
 }
 
 // ---------------------------------------------------------------------------
-// Markup — several marks committed as ONE drawing.
+// Markup — several marks about one item, committed as ONE sheet.
 //
 // The Pen settles each breath of ink as its own item. A markup is the other
-// authoring shape: open a screen, draw everything you mean, and land it whole
-// — one item to attach to a comment, one to move with its target, one for an
-// agent to `rm` when the asked-for thing is done. Still a drawing: same blob
-// format, same `annotates` + `region`, no new kind.
+// authoring shape: open a screen, draw everything you mean, and hand it whole
+// to a COMMENT (`CommentMarkup`). Nothing lands on the canvas: the sheet is a
+// blob the comment owns, in the item's own coordinates, so the window and an
+// agent both lay it over the item without a transform.
 // ---------------------------------------------------------------------------
 
-/** The title a markup lands with, so `isocan ls` can tell it from a Pen sketch. */
-export const MARKUP_TITLE = "Markup";
+/** The filename a comment's markup is uploaded under. */
+export const MARKUP_FILENAME = "markup.svg";
 
-/** One mark in a markup: a freehand stroke or a geometric shape. */
+/** One mark in a markup: a freehand stroke or a geometric shape. A shape may
+ * carry a `label` — the words that say what the arrow or the box MEANS, which
+ * the sheet shows as a numbered badge and the comment lists as a note. */
 export type Mark =
   | { kind: "stroke"; stroke: InkStroke }
-  | { kind: "shape"; shape: ShapeTool; drag: ShapeDrag; color: string; width: number };
+  | { kind: "shape"; shape: ShapeTool; drag: ShapeDrag; color: string; width: number; label?: string };
+
+/** Where a shape's badge sits: an arrow's tail (its head is busy pointing),
+ * a box's top-left corner, a line's start — the place the hand began. */
+export function markBadgeAt(mark: Mark): InkPoint | null {
+  if (mark.kind !== "shape") return null;
+  const { drag } = mark;
+  if (mark.shape === "rect" || mark.shape === "ellipse") return { x: Math.min(drag.x1, drag.x2), y: Math.min(drag.y1, drag.y2) };
+  return { x: drag.x1, y: drag.y1 };
+}
+
+/** The notes a set of marks carries, numbered in drawing order — the badges
+ * on the sheet and the list under the comment are this one sequence. */
+export function markupNotes(marks: readonly Mark[]): MarkupNote[] {
+  const notes: MarkupNote[] = [];
+  for (const mark of marks) {
+    const text = mark.kind === "shape" ? mark.label?.trim() : undefined;
+    const at = markBadgeAt(mark);
+    if (!text || !at || mark.kind !== "shape") continue;
+    notes.push({ n: notes.length + 1, shape: mark.shape, text, x: at.x, y: at.y });
+  }
+  return notes;
+}
+
+/** Badge radius in the item's units — legible at the sizes screens come in. */
+const BADGE_R = 10;
+
+function xmlText(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** A numbered badge beside a labelled shape, titled with its words. */
+function badgeBody(n: number, shape: ShapeTool, at: InkPoint, color: string, text: string): string {
+  const safe = safeColor(color);
+  return (
+    `  <g class="note" data-note="${n}" data-shape="${shape}"><title>${n}. ${xmlText(text)}</title>` +
+    `<circle cx="${r(at.x)}" cy="${r(at.y)}" r="${BADGE_R}" fill="${safe}" stroke="#fff" stroke-width="2"/>` +
+    `<text x="${r(at.x)}" y="${r(at.y)}" fill="#fff" font-family="system-ui, sans-serif" font-size="12" font-weight="700"` +
+    ` text-anchor="middle" dominant-baseline="central">${n}</text></g>`
+  );
+}
+
+/** The sheet's viewBox: the item's box, from its own top-left. */
+function markupSheetBounds(width: number, height: number): InkBounds {
+  return { minX: 0, minY: 0, maxX: width, maxY: height };
+}
+
+/**
+ * The blob a comment carries: every mark in one SVG whose viewBox is the
+ * item's own `width`×`height`, so `<img>` over the item lines up exactly.
+ */
+export function markupSheetSvg(marks: readonly Mark[], width: number, height: number): string {
+  return markupSvg(marks, markupSheetBounds(width, height));
+}
+
+/** How many marks a sheet holds, read from the SVG — one `<g>` per mark is
+ * not promised, so count the drawn primitives a mark produces: a stroke's
+ * path, a shape's rect/ellipse/line, an arrow's line (its head is extra). */
+export function markupSheetMarks(svg: string): number {
+  return (svg.match(/<(path|rect|ellipse|line)\b/g) ?? []).length;
+}
+
+/** The notes a sheet carries, read back from its badges — the inverse of
+ * `badgeBody`, so a sheet fetched from one comment and attached to another
+ * with `--markup` keeps its words. A hand-written sheet can use the same
+ * shape: `<g data-note="1"><title>1. words</title><circle cx cy …/></g>`. */
+export function markupSheetNotes(svg: string): MarkupNote[] {
+  const notes: MarkupNote[] = [];
+  const badge = /<g\b[^>]*data-note="(\d+)"(?:[^>]*data-shape="(\w+)")?[^>]*>\s*<title>([\s\S]*?)<\/title>\s*<circle\b[^>]*\bcx="(-?[\d.]+)"[^>]*\bcy="(-?[\d.]+)"/g;
+  for (const m of svg.matchAll(badge)) {
+    const n = Number(m[1]);
+    const text = m[3]!
+      .replace(new RegExp(`^${n}\\.\\s*`), "")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
+      .trim();
+    if (!text) continue;
+    notes.push({ n, shape: m[2] ?? "shape", text, x: Number(m[4]), y: Number(m[5]) });
+  }
+  return notes;
+}
 
 /** The box around every mark, padded the way ink is; null with nothing to draw. */
 export function markBounds(marks: readonly Mark[]): InkBounds | null {
@@ -433,7 +516,9 @@ export function markBounds(marks: readonly Mark[]): InkBounds | null {
   return bounds;
 }
 
-/** The blob: every mark in one SVG whose viewBox is `bounds` in world space. */
+/** The blob: every mark in one SVG whose viewBox is `bounds` in world space.
+ * Labelled shapes get their badges after every mark, so no line crosses a
+ * number. */
 export function markupSvg(marks: readonly Mark[], bounds: InkBounds): string {
   const body = marks
     .map((mark) =>
@@ -443,9 +528,14 @@ export function markupSvg(marks: readonly Mark[], bounds: InkBounds): string {
           : null
         : shapeBody(mark.shape, mark.drag, mark.color, mark.width),
     )
-    .filter((line): line is string => line !== null)
-    .join("\n");
-  return svgDocument(body, bounds);
+    .filter((line): line is string => line !== null);
+  let n = 0;
+  const badges = marks.flatMap((mark) => {
+    const text = mark.kind === "shape" ? mark.label?.trim() : undefined;
+    const at = markBadgeAt(mark);
+    return mark.kind === "shape" && text && at ? [badgeBody(++n, mark.shape, at, mark.color, text)] : [];
+  });
+  return svgDocument([...body, ...badges].join("\n"), bounds);
 }
 
 /** Every mark as strokes, for `drawingProperties` to read the markup's ink. */

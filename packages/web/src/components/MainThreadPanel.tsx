@@ -84,6 +84,7 @@ const NOT_HERE_YET = "not here yet";
 import { PanelResizer } from "./PanelResizer.tsx";
 import { PanelHead } from "./PanelHead.tsx";
 import { CommentFold, CommentWhen } from "./CommentWhen.tsx";
+import { CommentMarkupChip } from "./CommentMarkupChip.tsx";
 
 /**
  * What the message is about: the current selection, shown as chips over the
@@ -665,6 +666,7 @@ function Panel({
                   {comment.designDecision ? <Suspense fallback={<p>Reading design decision…</p>}><DesignComparisonComment comment={comment} canvasId={canvasId} actor={actor} threadId={thread!.id} /></Suspense> : comment.design ? <Suspense fallback={<p>Reading design record…</p>}><DesignComment comment={comment} /></Suspense> : <><CommandChip body={comment.body} /><Markdown rehypePlugins={chips}>{withoutCommand(comment.body)}</Markdown></>}
                 </div>
                 {!onOpenItem && canvas && thread && <LaneChips canvas={canvas} thread={thread} comment={comment} />}
+                {comment.markup && <CommentMarkupChip canvasId={canvasId} markup={comment.markup} />}
                 {comment.context && <ContextManifestView manifest={comment.context} comment={{ threadId: thread.id, commentId: comment.id }} />}
                 {refCards ? refCards(comment) : !comment.context && (comment.items ?? [])
                   .filter((id, i, all) => all.indexOf(id) === i)
