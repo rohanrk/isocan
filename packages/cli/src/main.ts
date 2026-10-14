@@ -295,6 +295,7 @@ import {
   contextReport,
   convergePlan,
   convergeOps,
+  nextOf,
   docketAnswer,
   docketSlug,
   docketVerdict,
@@ -8479,16 +8480,17 @@ program
 
 program
   .command("choose <item>")
-  .description("This one won: fold a variation back onto what it was made from")
+  .description("This one won: fold a variation back onto what it was made from, and say so where the agent hears it")
   .option("--canvas <canvas>")
+  .option("--then <words>", "what should happen next — the brief for the next round, posted as a Next: line")
   .option("--dry-run", "say what it would do, and do nothing")
   .action(
-    run(async (ref: string, opts: { dryRun?: boolean }, cmd: Command) => {
+    run(async (ref: string, opts: { dryRun?: boolean; then?: string }, cmd: Command) => {
       const ctx = await ctxOf(cmd);
       const p = await resolveCanvas(ctx);
       const snapshot = await ctx.client.snapshot(p.id);
       const chosen = resolveItem(snapshot, ref);
-      const plan = convergePlan(snapshot.canvas, chosen.id);
+      const plan = convergePlan(snapshot.canvas, chosen.id, { by: ctx.actor.id, ...(opts.then !== undefined ? { then: opts.then } : {}) });
       if (isRefusal(plan)) throw new Error(plan.refused);
 
       const parent = snapshot.canvas.items[plan.parentId]!;
@@ -8497,7 +8499,8 @@ program
         if (ctx.json) return printJson(plan);
         console.log(
           `"${chosen.title}" would become v${parent.versions.length + 1} of "${parent.title}", ` +
-            `and ${plan.trash.length} item${plan.trash.length === 1 ? "" : "s"} would go to the trash`,
+            `and ${plan.trash.length} item${plan.trash.length === 1 ? "" : "s"} would go to the trash; ` +
+            `the thread on "${parent.title}" would say: ${plan.post.body.replace(/\n\n/g, " ")}`,
         );
         return;
       }
@@ -8517,16 +8520,23 @@ program
        * on the source and the named children in the trash.
        */
       const group = newGroupId();
-      // Core's list, so the web's "Choose this variation" sends the same ops.
-      for (const op of convergeOps(plan)) await sendOp(ctx, p.id, op, group);
+      // Core's list, so the web's "Choose this variation" sends the same ops —
+      // the fold, then the decision said on the source's thread
+      // (docs/projects/exploration/design.md §1).
+      const ops = convergeOps(plan);
+      for (const op of ops) await sendOp(ctx, p.id, op, group);
+      const post = ops.at(-1)!;
+      const said = post.type === "thread.reply" || post.type === "thread.create"
+        ? { threadId: post.threadId, commentId: post.comment.id }
+        : {};
 
       if (ctx.json) {
-        return printJson({ parentId: plan.parentId, trashed: plan.trash, label: plan.label });
+        return printJson({ parentId: plan.parentId, trashed: plan.trash, label: plan.label, ...said, body: plan.post.body, next: nextOf(plan.post.body) });
       }
       console.error(
         `"${chosen.title}" is v${parent.versions.length + 1} of "${parent.title}"` +
           (losing > 0 ? `, and ${losing} other${losing === 1 ? "" : "s"} went to the trash` : "") +
-          " — one undo takes it all back",
+          ` — said so on its thread${plan.post.mentions.length > 0 ? `, naming ${plan.post.mentions.length} author${plan.post.mentions.length === 1 ? "" : "s"}` : ""}; one undo takes it all back`,
       );
     }),
   );

@@ -1,5 +1,7 @@
-import type { CanvasContents, Item, ItemVersion } from "./model.ts";
+import type { CanvasContents, CommentThread, Item, ItemVersion } from "./model.ts";
 import { childrenOf, parentOf } from "./lineage.ts";
+import { newCommentId, newThreadId } from "./ids.ts";
+import { anchorOffset } from "./placement.ts";
 import type { Operation } from "./ops.ts";
 
 /**
@@ -41,6 +43,19 @@ import type { Operation } from "./ops.ts";
  * gave it, recoverable. `label` below is the sentence the CLI prints, not a
  * field anything stores — and calling it what it is beats implying a record
  * that does not exist.
+ *
+ * **And, since 14 Oct 2026, the decision is SAID** (docs/projects/exploration/).
+ * atlas/convergence.md recorded the gap in as many words — "no decision post"
+ * — and it was the one silence that stopped an exploration from running
+ * itself: an agent parked on the source woke on a bare `item.addVersion` and
+ * could not tell "go this way" from "I edited it"; an agent parked on the Chat
+ * heard nothing. So the person typed to the agent, which is the ping the
+ * project exists to remove. The plan now carries a `post` and `convergeOps`
+ * sends it LAST in the same group: a comment by the chooser on the source's
+ * thread — `Chose "B" over "A", "C".` — naming the authors of the options,
+ * with `Next: …` when the chooser said what comes next. Still no new op: a
+ * `thread.reply` (or `thread.create` anchored to the source) inverts, so one
+ * ⌘Z takes the version, the trash and the words back together.
  */
 interface ConvergePlan {
   /** The item the winner folds into. */
@@ -51,6 +66,77 @@ interface ConvergePlan {
   trash: string[];
   /** The sentence a surface says about this decision. Not stored. */
   label: string;
+  /** The decision, said where the waiting agent hears it. */
+  post: DecisionPost;
+}
+
+/**
+ * The comment a choice leaves on the source's thread. Computed by
+ * `convergePlan` so both doors say the same words; `convergeOps` turns it into
+ * the one thread op.
+ */
+interface DecisionPost {
+  /** The newest live thread anchored to the source, or null to start one. */
+  threadId: string | null;
+  /** `Chose "B" over "A", "C".`, then `\n\nNext: …` when `then` was given. */
+  body: string;
+  /** Who made the options — the `createdBy` of each trashed sibling's current
+   * version, deduplicated, the chooser left out. Named so an agent on a plain
+   * `wait` wakes (`reasonFor`: "mentioned") even when the post starts a new
+   * thread nobody is in yet. */
+  mentions: string[];
+  /** The source, carried so a reader can act on it without parsing words. */
+  items: string[];
+  /** Where a new thread's pin sits on the source (core's `anchorOffset`),
+   * unused when `threadId` names an existing thread. */
+  at: { x: number; y: number };
+}
+
+/** What a chooser can add to the fold. */
+interface ConvergeOptions {
+  /** What should happen next, in the chooser's words — becomes the `Next:`
+   * line, which is the one convention the agent half reads. */
+  then?: string;
+  /** The chooser, so they are not told about their own pick. */
+  by?: string;
+}
+
+/** The convention: a decision post's first line. */
+const DECISION_PREFIX = "Chose ";
+/** The convention: the line that carries the next brief. */
+const NEXT_PREFIX = "Next: ";
+
+const quote = (title: string) => `"${title.replace(/"/g, "'")}"`;
+
+/**
+ * The thread the post lands in: the newest live thread anchored to the
+ * source — the conversation that most likely asked for the options — and
+ * never the Chat, which would wake every agent on the canvas for one screen's
+ * decision. Null when there is none, and the caller starts one.
+ */
+function threadOn(canvas: CanvasContents, itemId: string): string | null {
+  let best: CommentThread | null = null;
+  for (const thread of Object.values(canvas.threads)) {
+    if (thread.anchorItemId !== itemId || thread.main) continue;
+    if (!best || thread.createdAt > best.createdAt) best = thread;
+  }
+  return best?.id ?? null;
+}
+
+/** `Chose "B" over "A", "C".` — fixed and short so a reader, person or
+ *  agent, knows a decision at a glance. `diff <source>` says what it WAS. */
+function decisionBody(chosen: string, over: readonly string[], then?: string): string {
+  const head = over.length > 0 ? `${DECISION_PREFIX}${quote(chosen)} over ${over.map(quote).join(", ")}.` : `${DECISION_PREFIX}${quote(chosen)}.`;
+  const next = then?.trim();
+  return next ? `${head}\n\n${NEXT_PREFIX}${next}` : head;
+}
+
+/** The `Next:` line of a decision post, or null when the pick was the whole
+ *  instruction. The agent half reads this rather than the prose. */
+export function nextOf(body: string): string | null {
+  if (!body.startsWith(DECISION_PREFIX)) return null;
+  const line = body.split("\n").find((l) => l.startsWith(NEXT_PREFIX));
+  return line ? line.slice(NEXT_PREFIX.length).trim() || null : null;
 }
 
 type ConvergeRefusal = { refused: string };
@@ -65,6 +151,7 @@ type ConvergeRefusal = { refused: string };
 export function convergePlan(
   canvas: CanvasContents,
   chosenId: string,
+  options: ConvergeOptions = {},
 ): ConvergePlan | ConvergeRefusal {
   const chosen = canvas.items[chosenId];
   if (!chosen) return { refused: `no item ${chosenId} on this canvas` };
@@ -92,12 +179,31 @@ export function convergePlan(
   const family = childrenOf(canvas, parentId).map((item: Item) => item.id);
   const trash = family.includes(chosenId) ? family : [chosenId, ...family];
 
+  // The post. The losers are named in the canvas's order so two choosers of
+  // the same round write the same sentence; the authors are whoever made each
+  // option's current version, which for an agent's round is the agent.
+  const losers = trash.filter((id) => id !== chosenId).map((id) => canvas.items[id]!);
+  const mentions = Array.from(
+    new Set(trash.map((id) => currentVersionOf(canvas.items[id]!)?.createdBy.id).filter((id): id is string => !!id)),
+  ).filter((id) => id !== options.by);
+
   return {
     parentId,
     version,
     trash,
     label: `chose ${chosen.title}`,
+    post: {
+      threadId: threadOn(canvas, parentId),
+      body: decisionBody(chosen.title, losers.map((l) => l.title), options.then),
+      mentions,
+      items: [parentId],
+      at: anchorOffset(parent),
+    },
   };
+}
+
+function currentVersionOf(item: Item): ItemVersion | undefined {
+  return item.versions.find((v) => v.id === item.currentVersionId) ?? item.versions[0];
 }
 
 export function isRefusal(plan: ConvergePlan | ConvergeRefusal): plan is ConvergeRefusal {
@@ -106,16 +212,42 @@ export function isRefusal(plan: ConvergePlan | ConvergeRefusal): plan is Converg
 
 /**
  * **The ops a choice sends, in order**: the winner onto the parent's stack,
- * then every child to the trash. The caller sends them under ONE group, so
- * one ⌘Z takes the version back and brings every child out of the trash.
+ * then every child to the trash, then the decision said on the source's
+ * thread. The caller sends them under ONE group, so one ⌘Z takes the version
+ * back, brings every child out of the trash and removes the words.
+ *
+ * The post is last so that an agent woken by it reads a canvas where the fold
+ * has already happened. Its ids are minted here unless the caller holds them
+ * (a test comparing two surfaces does), because a `thread.create` needs an id
+ * before the daemon has seen it.
  *
  * Here rather than in either client because there are two: `isocan choose`
  * and the item menu's "Choose this variation" both send exactly this list
  * (`packages/web/test/choose.test.ts` holds them equal against a daemon).
  */
-export function convergeOps(plan: ConvergePlan): Operation[] {
+export function convergeOps(
+  plan: ConvergePlan,
+  ids: { threadId?: string; commentId?: string } = {},
+): Operation[] {
+  const comment = {
+    id: ids.commentId ?? newCommentId(),
+    body: plan.post.body,
+    ...(plan.post.mentions.length > 0 ? { mentions: plan.post.mentions } : {}),
+    items: plan.post.items,
+  };
+  const post: Operation = plan.post.threadId
+    ? { type: "thread.reply", threadId: plan.post.threadId, comment }
+    : {
+        type: "thread.create",
+        threadId: ids.threadId ?? newThreadId(),
+        anchorItemId: plan.parentId,
+        x: plan.post.at.x,
+        y: plan.post.at.y,
+        comment,
+      };
   return [
     { type: "item.addVersion", itemId: plan.parentId, version: plan.version },
     ...plan.trash.map((itemId): Operation => ({ type: "item.delete", itemId })),
+    post,
   ];
 }

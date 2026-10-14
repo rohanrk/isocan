@@ -22,10 +22,13 @@ export async function chooseVariation(
   actor: Actor,
   itemId: string,
   send: (op: Operation, group: string) => Promise<unknown> = (op, group) => sendEchoed(canvasId, actor, op, group),
+  /** The next brief, when the surface offered a field for one — becomes the
+   * post's `Next:` line (docs/projects/exploration/design.md §1). */
+  then?: string,
 ): Promise<Operation[] | null> {
   const canvas = useCanvasStore.getState().canvas;
   if (!canvas) return null;
-  const plan = convergePlan(canvas, itemId);
+  const plan = convergePlan(canvas, itemId, { by: actor.id, ...(then !== undefined ? { then } : {}) });
   if (isRefusal(plan)) {
     setNotice(plan.refused);
     return null;
@@ -38,7 +41,7 @@ export async function chooseVariation(
   flashNotice(
     `“${canvas.items[itemId]!.title}” is v${parent.versions.length + 1} of “${parent.title}”` +
       (others > 0 ? `, and ${others} other${others === 1 ? "" : "s"} went to the trash` : "") +
-      " (⌘Z takes it all back)",
+      " — said so on its thread (⌘Z takes it all back)",
   );
   return ops;
 }

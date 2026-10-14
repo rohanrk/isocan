@@ -363,10 +363,16 @@ That parity is a house rule with a test behind it: see AGENTS.md.
   chose and the badge is ours to move.
 - **Choosing a variation**: right-click a variation (anything `/variation`
   made from a screen) → **Choose this variation**, or `isocan choose <item>`:
-  its content becomes the next version of the screen it came from and the
-  whole exploration goes to the trash — the same ops from either surface, and
-  one ⌘Z takes the decision back. `isocan prefer <winner> --over <other>` is
-  the lighter half, a recorded preference that moves nothing.
+  its content becomes the next version of the screen it came from, the
+  whole exploration goes to the trash, and **the decision is said** — a
+  comment on the screen's thread, *Chose "B" over "A", "C".*, naming whoever
+  made the options, so an agent parked on the screen wakes with its next
+  brief instead of a bare version change. `--then "…"` adds a `Next:` line,
+  which is how a pick becomes the next round without pinging anybody
+  ([exploration](docs/projects/exploration/journey.md)). The same ops from
+  either surface, and one ⌘Z takes the decision — words included — back.
+  `isocan prefer <winner> --over <other>` is the lighter half, a recorded
+  preference that moves nothing and says nothing.
 - **Seeing what changed**: right-click → **Compare versions**, or **Compare**
   on any card of the fanned-out stack, opens before and after side by side at
   one scale, with the changes marked inside both renders and a numbered list

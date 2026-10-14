@@ -155,7 +155,7 @@ in topic `reference`. ⚠ marks what cannot be undone: ask first.
 - `context show|pin|exclude|unmark|inherit|uninherit|request|content|personal` — what an agent reads
 - `design workflow|start|brief|receipt|questions|ask|answer|reference|compare|respond|decide|review|craft` — a design request
 - `design show|check|set|use|import|skip|direction|project|reconcile|recipes|recipe|audit|repair` — the design system
-- `diff`, `prefer`, `choose` — what changed between versions, the eye test, the winner folded back
+- `diff`, `prefer`, `choose [--then]` — what changed between versions, the eye test, the winner folded back and the decision said
 - `doc status` — where one of this repo's documents stands
 
 **History** (`history`)
@@ -1841,6 +1841,53 @@ does this — it is terse rather than wrong; the whole gesture is undone.)
 It refuses with a reason rather than a shrug: an item made from nothing has
 nowhere to fold back into, and an item whose source has been deleted since
 says so.
+
+## The exploration lap: a pick is the next brief
+
+**A choice is said, not just done.** Whichever door it goes through, `choose`
+ends by posting on the SOURCE's thread — the newest one pinned to it, or a
+new one — in the chooser's voice:
+
+```
+Chose "Spacious" over "Dense", "Search-first".
+
+Next: keep the two columns, lose the sidebar icons, make it real data
+```
+
+The first line is fixed. The `Next:` line is there when the chooser said what
+comes next (`isocan choose <item> --then "…"`, or the field in the app) and
+absent when they just picked. The post names whoever made the options — the
+author of each sibling's current version — so if you drew them, a plain
+`wait` wakes you; and it is pinned to the source, so `wait --item <source>`
+wakes you too. It lands LAST in the fold's undo group: when you wake, the
+source already has its new version. One undo takes the version, the trash and
+the words back together.
+
+This is how an exploration runs itself without the person pinging you
+(docs/projects/exploration/). The lap, from your side:
+
+1. **Make the round from the source.** `/variation`, `wire vary`, or
+   `add --prop parent=<source>`: every option says what it was made from, and
+   that lineage is what `choose` folds along. Say in ONE note what the options
+   are and which you would pick.
+2. **Park on the source, not the Chat.** `isocan wait --item <source> --json
+   --timeout 900`. The decision lands there.
+3. **Wake on a comment that begins `Chose`.** Read the source's new version
+   (`isocan get <source>`, `isocan diff <source>`), then read the post:
+   - **No `Next:` line** — the pick is the whole instruction: *this
+     direction*. Reply in one line with the next round you would run, and if
+     the exploration was yours to run, run it.
+   - **`Next: <words>`** — that is the brief. Do it.
+   - **`Next:` says done, ship, or stop** — say what shipped and stop.
+4. **Make the next round from the source again**, never from the trashed
+   winner, so the lineage stays one stack with explorations hanging off it.
+   Park again.
+
+Isocan owns the turn; you own the content. How many options a round has, how
+many rounds, and at what fidelity is yours to decide and say — nothing on the
+canvas counts rounds for you. `prefer` stays silent on purpose: flipping
+between two is not a decision, and twenty flips should not be twenty
+comments.
 
 ## Bringing in somebody else's theme
 

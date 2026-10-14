@@ -17,8 +17,12 @@ in three places, each on purpose or on the record:
   source's next version, and every child — the winner included — is trashed,
   recoverable and restored by the one undo. The roads not taken survive as
   named items in the trash, which is weaker than this doc asked for.
-- **No decision post.** `choose` does not write the decision to the parent's
-  thread. (The web door exists since 24 Sep 2026: the item menu's **Choose
+- **No decision post** — *discharged 14 Oct 2026* by
+  [exploration](../exploration/design.md): `choose` now ends by posting
+  *Chose "B" over "A", "C".* on the source's thread, last in the fold's undo
+  group, naming the options' authors, with `--then` adding a `Next:` line.
+  (Before that, `choose` did not write the decision to the parent's thread.
+  The web door has existed since 24 Sep 2026: the item menu's **Choose
   this variation** on a variation whose source is still here, through the same
   `convergePlan` and `convergeOps` as the verb, one group —
   `packages/web/test/choose.test.ts` holds the two surfaces' ops equal.)
